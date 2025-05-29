@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows.Forms;
 
 namespace rakuten_scraper
@@ -15,9 +16,12 @@ namespace rakuten_scraper
 
         private async void Form1_LoadAsync(object sender, EventArgs e)
         {
+            dateTimePicker1.Format = DateTimePickerFormat.Custom;
+            dateTimePicker1.CustomFormat = "yyyy/MM";
             dateTimePicker1.Value = DateTime.Now;
 
             await LoadDataAsync();
+            MessageBox.Show("読込完了", "Load", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private async Task LoadDataAsync()
@@ -45,11 +49,48 @@ namespace rakuten_scraper
         {
             // データを読み込む
             BookListGrid.DataSource = dataList;
+            BookListGrid.AutoResizeColumns();
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
             scraper.getPage(dateTimePicker1.Value);
+        }
+
+        private void BookListGrid_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+
+        }
+
+        private void BookListGrid_CellContentDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            // セルの内容がクリックされたときの処理
+            if (e.RowIndex < 0 || e.ColumnIndex < 0)
+            {
+                return; // ヘッダー行やヘッダー列がクリックされた場合は何もしない
+            }
+            OpenUrl(_dataList[e.RowIndex].link.ToString());
+        }
+        /// <summary>
+        /// URLを既定のブラウザで開く
+        /// </summary>
+        /// <param name="url">URL</param>
+        /// <returns>Process</returns>
+        private Process OpenUrl(string url)
+        {
+            ProcessStartInfo pi = new ProcessStartInfo()
+            {
+                FileName = url,
+                UseShellExecute = true,
+            };
+
+            return Process.Start(pi);
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            scraper.SaveJson(dateTimePicker1.Value);
+            MessageBox.Show("保存完了", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

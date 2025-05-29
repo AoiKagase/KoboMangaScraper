@@ -33,6 +33,7 @@
             BookListGrid = new DataGridView();
             dateTimePicker1 = new DateTimePicker();
             button1 = new Button();
+            button2 = new Button();
             ((System.ComponentModel.ISupportInitialize)BookListGrid).BeginInit();
             SuspendLayout();
             // 
@@ -47,41 +48,57 @@
             BookListGrid.AllowUserToAddRows = false;
             BookListGrid.AllowUserToDeleteRows = false;
             BookListGrid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            BookListGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             BookListGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            BookListGrid.Location = new Point(12, 12);
+            BookListGrid.Location = new Point(12, 14);
             BookListGrid.Name = "BookListGrid";
-            BookListGrid.ReadOnly = true;
-            BookListGrid.Size = new Size(890, 503);
+            BookListGrid.RowHeadersVisible = false;
+            BookListGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            BookListGrid.Size = new Size(890, 570);
             BookListGrid.TabIndex = 0;
+            BookListGrid.CellContentClick += BookListGrid_CellContentClick;
+            BookListGrid.CellContentDoubleClick += BookListGrid_CellContentDoubleClick;
             // 
             // dateTimePicker1
             // 
-            dateTimePicker1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
-            dateTimePicker1.Location = new Point(12, 521);
+            dateTimePicker1.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            dateTimePicker1.Location = new Point(12, 590);
             dateTimePicker1.Name = "dateTimePicker1";
-            dateTimePicker1.Size = new Size(200, 23);
+            dateTimePicker1.Size = new Size(101, 25);
             dateTimePicker1.TabIndex = 1;
             // 
             // button1
             // 
             button1.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            button1.Location = new Point(827, 521);
+            button1.Location = new Point(827, 591);
             button1.Name = "button1";
-            button1.Size = new Size(75, 23);
+            button1.Size = new Size(75, 26);
             button1.TabIndex = 2;
             button1.Text = "更新";
             button1.UseVisualStyleBackColor = true;
             button1.Click += button1_Click;
             // 
+            // button2
+            // 
+            button2.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            button2.Location = new Point(746, 591);
+            button2.Name = "button2";
+            button2.Size = new Size(75, 26);
+            button2.TabIndex = 3;
+            button2.Text = "保存";
+            button2.UseVisualStyleBackColor = true;
+            button2.Click += button2_Click;
+            // 
             // MainWnd
             // 
-            AutoScaleDimensions = new SizeF(7F, 15F);
+            AutoScaleDimensions = new SizeF(7F, 17F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(914, 552);
+            AutoScroll = true;
+            ClientSize = new Size(914, 626);
+            Controls.Add(button2);
             Controls.Add(button1);
             Controls.Add(dateTimePicker1);
             Controls.Add(BookListGrid);
+            Font = new Font("Noto Sans JP", 9F, FontStyle.Regular, GraphicsUnit.Point, 128);
             Name = "MainWnd";
             Text = "Kobo Manga Scraper";
             Load += Form1_LoadAsync;
@@ -95,5 +112,6 @@
         private DataGridView BookListGrid;
         private DateTimePicker dateTimePicker1;
         private Button button1;
+        private Button button2;
     }
 }

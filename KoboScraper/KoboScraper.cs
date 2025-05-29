@@ -4,6 +4,9 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Io;
 using System;
 using System.ComponentModel;
+using System.ComponentModel.Design;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -15,6 +18,8 @@ namespace rakuten_scraper
     /// </summary>
     internal class BookItem
     {
+        [DisplayName("予約")]
+        public bool isChecked { get; set; } = false; // DataGridViewのチェックボックス用
         public string? releaseDate { get; set; }
         [JsonIgnore]
         public Image? image { get; set; }
@@ -72,6 +77,9 @@ namespace rakuten_scraper
         /// <param name="date">基準日</param>
         public async void getPage(DateTime date)
         {
+            // 取得する本のリストを初期化
+            books.Clear();
+
             // ページコントロールがめんどくさいのでとりあえず1000ページくらい回す
             // 100で良いじゃろと思ったら200ページのパターンがあったわ
             for (int i = 0; i < 1000; i++)
@@ -206,24 +214,27 @@ namespace rakuten_scraper
                 books = JsonSerializer.Deserialize<BindingList<BookItem>>(json);
                 if (books.Count > 0)
                 {
-                    foreach (BookItem book in books)
+                    _ = Task.Run(async () =>
                     {
-                        // 画像を取得する為の処理
-                        var response = await loader.FetchAsync(new DocumentRequest(new Url(book.imageLink))).Task;
-                        using (var ms = new MemoryStream())
+                        foreach (BookItem book in this.books)
                         {
-                            await response.Content.CopyToAsync(ms);
-                            var bytes = ms.ToArray();
-                            book.image = ByteArrayToImage(bytes);
+                            // 画像を取得する為の処理
+                            var response = await loader.FetchAsync(new DocumentRequest(new Url(book.imageLink))).Task;
+                            using (var ms = new MemoryStream())
+                            {
+                                await response.Content.CopyToAsync(ms);
+                                var bytes = ms.ToArray();
+                                book.image = ByteArrayToImage(bytes);
+                            }
                         }
-                    }
+                    }); // 画像ロードは非同期で行う
                     return true; // loaded.
                 }
             }
             return false; // json not found.
         }
 
-        private void SaveJson(DateTime date)
+        public void SaveJson(DateTime date)
         {
             string json = JsonSerializer.Serialize(books, new JsonSerializerOptions { WriteIndented = true });
 
