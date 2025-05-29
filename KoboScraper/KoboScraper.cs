@@ -54,8 +54,12 @@ namespace rakuten_scraper
             var requester = context.GetService<DefaultHttpRequester>();
             requester.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36";
 
-            // ページコントロールがめんどくさいのでとりあえず100ページくらい回す
-            for (int i = 0; i < 100; i++)
+            // 画像取得用にloaderを作成しとく
+            var loader = context.GetService<IDocumentLoader>();
+
+            // ページコントロールがめんどくさいのでとりあえず1000ページくらい回す
+            // 100で良いじゃろと思ったら200ページのパターンがあったわ
+            for (int i = 0; i < 1000; i++)
             {
                 // とりあえずこのURLなら今のところいける
                 string urlstring = string.Format(@"https://books.rakuten.co.jp/calendar/101904/monthly/?tid={0}&s=14&p={1}#rclist", date.ToString("yyyy-MM-dd"), i);
@@ -77,20 +81,28 @@ namespace rakuten_scraper
                         // 表示させるための本の情報作る
                         BookItem bookItem = new BookItem();
 
+                        // パース
+                        var releaseDate = book.GetElementsByClassName("item-release__date");
+                        var title       = book.GetElementsByClassName("item-title");
+                        var author      = book.GetElementsByClassName("item-author__name");
+                        var price       = book.GetElementsByClassName("item-pricing__price");
+                        var img         = book.GetElementsByTagName("img");
+
                         // リリース日
-                        bookItem.releaseDate = book.GetElementsByClassName("item-release__date")[0].TextContent;
+                        bookItem.releaseDate= (releaseDate.Length > 0) ? releaseDate[0].TextContent : "";
                         // タイトル
-                        var title = book.GetElementsByClassName("item-title")[0];
-                        bookItem.title = title.GetElementsByClassName("item-title__text")[0].TextContent;
-                        bookItem.link = new Url(title.GetElementsByTagName("a")[0]?.GetAttribute("href")?.ToString());
+                        if (title.Length > 0)
+                        {
+                            bookItem.title  = title[0].TextContent;
+                            bookItem.link   = new Url(title[0].GetElementsByTagName("a")[0]?.GetAttribute("href")?.ToString());
+                        }
                         // 作者
-                        bookItem.author = book.GetElementsByClassName("item-author__name")[0].TextContent;
+                        bookItem.author     = (author.Length > 0) ? author[0].TextContent : "";
                         // 価格
-                        bookItem.price = book.GetElementsByClassName("item-pricing__price")[0].TextContent;
+                        bookItem.price      = (price.Length > 0)  ? price[0].TextContent  : "";
 
                         // 画像を取得する為の処理
-                        var loader = context.GetService<IDocumentLoader>();
-                        var response = await loader.FetchAsync(new DocumentRequest(new Url(((IHtmlImageElement)book.GetElementsByTagName("img")[0]).Source))).Task;
+                        var response = await loader.FetchAsync(new DocumentRequest(new Url(((IHtmlImageElement)img[0]).Source))).Task;
                         using (var ms = new MemoryStream())
                         {
                             await response.Content.CopyToAsync(ms);
@@ -99,7 +111,7 @@ namespace rakuten_scraper
                         }
 
                         // むかつく分冊版の排除
-                        if (IsOneshotEpisode(bookItem.title))
+                        if (IsOneshotEpisode(bookItem))
                             continue;
 
                         // 本の情報を追加
@@ -145,16 +157,24 @@ namespace rakuten_scraper
         /// </summary>
         /// <param name="title"></param>
         /// <returns></returns>
-        private bool IsOneshotEpisode(string title)
+        private bool IsOneshotEpisode(BookItem book)
         {
             // LinQとか書けないのでとりあえず回す
             foreach (string regex in OneshotRegex)
             {
-                if (Regex.IsMatch(title, regex))
+                if (Regex.IsMatch(book.title, regex))
                 {
                     return true;
                 }
             }
+
+            // 値段が300円以下なら分冊版とみなす強硬手段
+            var price = int.Parse(book.price.Replace("円", ""), System.Globalization.NumberStyles.AllowThousands);
+            if (price <= 300)
+            {
+                return true;
+            }
+
             return false;
         }
     }

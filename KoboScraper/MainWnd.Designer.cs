@@ -31,6 +31,8 @@
             components = new System.ComponentModel.Container();
             imageList1 = new ImageList(components);
             BookListGrid = new DataGridView();
+            dateTimePicker1 = new DateTimePicker();
+            button1 = new Button();
             ((System.ComponentModel.ISupportInitialize)BookListGrid).BeginInit();
             SuspendLayout();
             // 
@@ -53,11 +55,32 @@
             BookListGrid.Size = new Size(890, 503);
             BookListGrid.TabIndex = 0;
             // 
+            // dateTimePicker1
+            // 
+            dateTimePicker1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
+            dateTimePicker1.Location = new Point(12, 521);
+            dateTimePicker1.Name = "dateTimePicker1";
+            dateTimePicker1.Size = new Size(200, 23);
+            dateTimePicker1.TabIndex = 1;
+            // 
+            // button1
+            // 
+            button1.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            button1.Location = new Point(827, 521);
+            button1.Name = "button1";
+            button1.Size = new Size(75, 23);
+            button1.TabIndex = 2;
+            button1.Text = "更新";
+            button1.UseVisualStyleBackColor = true;
+            button1.Click += button1_Click;
+            // 
             // MainWnd
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(914, 527);
+            ClientSize = new Size(914, 552);
+            Controls.Add(button1);
+            Controls.Add(dateTimePicker1);
             Controls.Add(BookListGrid);
             Name = "MainWnd";
             Text = "Kobo Manga Scraper";
@@ -70,5 +93,7 @@
 
         private ImageList imageList1;
         private DataGridView BookListGrid;
+        private DateTimePicker dateTimePicker1;
+        private Button button1;
     }
 }

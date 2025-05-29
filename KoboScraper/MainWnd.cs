@@ -1,10 +1,12 @@
 using System.ComponentModel;
+using System.Windows.Forms;
 
 namespace rakuten_scraper
 {
     public partial class MainWnd : Form
     {
         private BindingList<BookItem> _dataList;
+        private KoboScraper scraper = new KoboScraper();
 
         public MainWnd()
         {
@@ -15,8 +17,8 @@ namespace rakuten_scraper
         {
             try
             {
-                KoboScraper scraper = new();
-                scraper.getPage(new DateTime(2025,06,01));
+                dateTimePicker1.Value = DateTime.Now;
+                scraper.getPage(dateTimePicker1.Value);
                 _dataList = scraper.books;
                 LoadDataIntoDataGridView(_dataList);
             }
@@ -32,6 +34,11 @@ namespace rakuten_scraper
         {
             // ÉfÅ[É^Çì«Ç›çûÇﬁ
             BookListGrid.DataSource = dataList;
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            scraper.getPage(dateTimePicker1.Value);
         }
     }
 }
