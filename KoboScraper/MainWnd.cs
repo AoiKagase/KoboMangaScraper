@@ -16,9 +16,11 @@ namespace rakuten_scraper
 
         private async void Form1_LoadAsync(object sender, EventArgs e)
         {
+            dateTimePicker1.ValueChanged -= dateTimePicker1_ValueChanged;
             dateTimePicker1.Format = DateTimePickerFormat.Custom;
             dateTimePicker1.CustomFormat = "yyyy/MM";
             dateTimePicker1.Value = DateTime.Now;
+            dateTimePicker1.ValueChanged += dateTimePicker1_ValueChanged;
 
             await LoadDataAsync();
             MessageBox.Show("ì«çûäÆóπ", "Load", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -91,6 +93,12 @@ namespace rakuten_scraper
         {
             scraper.SaveJson(dateTimePicker1.Value);
             MessageBox.Show("ï€ë∂äÆóπ", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private async void dateTimePicker1_ValueChanged(object sender, EventArgs e)
+        {
+            await LoadDataAsync();
+            MessageBox.Show("ì«çûäÆóπ", "Load", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }
