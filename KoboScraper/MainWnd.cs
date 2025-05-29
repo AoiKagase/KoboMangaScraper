@@ -13,12 +13,22 @@ namespace rakuten_scraper
             InitializeComponent();
         }
 
-        private void Form1_Load(object sender, EventArgs e)
+        private async void Form1_LoadAsync(object sender, EventArgs e)
+        {
+            dateTimePicker1.Value = DateTime.Now;
+
+            await LoadDataAsync();
+        }
+
+        private async Task LoadDataAsync()
         {
             try
             {
-                dateTimePicker1.Value = DateTime.Now;
-                scraper.getPage(dateTimePicker1.Value);
+                bool loaded = await scraper.LoadJson(dateTimePicker1.Value);
+                if (!loaded)
+                {
+                    scraper.getPage(dateTimePicker1.Value);
+                }
                 _dataList = scraper.books;
                 LoadDataIntoDataGridView(_dataList);
             }
@@ -30,6 +40,7 @@ namespace rakuten_scraper
                     MessageBoxIcon.Error);
             }
         }
+
         private void LoadDataIntoDataGridView(BindingList<BookItem> dataList)
         {
             // ÉfÅ[É^Çì«Ç›çûÇﬁ

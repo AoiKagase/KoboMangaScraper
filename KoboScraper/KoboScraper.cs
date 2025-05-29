@@ -2,7 +2,10 @@
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using AngleSharp.Io;
+using System;
 using System.ComponentModel;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace rakuten_scraper
@@ -13,11 +16,16 @@ namespace rakuten_scraper
     internal class BookItem
     {
         public string? releaseDate { get; set; }
+        [JsonIgnore]
         public Image? image { get; set; }
         public string? title { get; set; }
         public string? author { get; set; }
         public string? price { get; set; }
-        public Url? link { get; set; }
+
+        [Browsable(false)]
+        public string? link { get; set; }
+        [Browsable(false)]
+        public string? imageLink { get; set; }
     }
 
     /// <summary>
@@ -31,10 +39,31 @@ namespace rakuten_scraper
         public BindingList<BookItem> books { get; set; } = new BindingList<BookItem>();
 
         /// <summary>
+        /// AngelSharpの設定
+        /// </summary>
+        private IConfiguration config;
+        private IBrowsingContext context;
+        private DefaultHttpRequester requester;
+        private IDocumentLoader loader;
+
+        /// <summary>
         /// コンストラクタ
         /// </summary>
         public KoboScraper()
         {
+            // AngelSharpの設定
+            // よく分からん
+            config = Configuration.Default
+                                      .WithDefaultLoader()
+                                      .WithDefaultCookies();
+            context = BrowsingContext.New(config);
+
+            // とりあえずUser-Agentは誤魔化す
+            requester = context.GetService<DefaultHttpRequester>();
+            requester.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36";
+
+            // 画像取得用にloaderを作成しとく
+            loader = context.GetService<IDocumentLoader>();
         }
 
         /// <summary>
@@ -43,20 +72,6 @@ namespace rakuten_scraper
         /// <param name="date">基準日</param>
         public async void getPage(DateTime date)
         {
-            // AngelSharpの設定
-            // よく分からん
-            var config = Configuration.Default
-                                      .WithDefaultLoader()
-                                      .WithDefaultCookies();
-            var context = BrowsingContext.New(config);
-
-            // とりあえずUser-Agentは誤魔化す
-            var requester = context.GetService<DefaultHttpRequester>();
-            requester.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36";
-
-            // 画像取得用にloaderを作成しとく
-            var loader = context.GetService<IDocumentLoader>();
-
             // ページコントロールがめんどくさいのでとりあえず1000ページくらい回す
             // 100で良いじゃろと思ったら200ページのパターンがあったわ
             for (int i = 0; i < 1000; i++)
@@ -87,22 +102,25 @@ namespace rakuten_scraper
                         var author      = book.GetElementsByClassName("item-author__name");
                         var price       = book.GetElementsByClassName("item-pricing__price");
                         var img         = book.GetElementsByTagName("img");
+                        var imgLink     = (img.Length > 0) ? ((IHtmlImageElement)img[0]).Source?.Trim() : "";
 
                         // リリース日
-                        bookItem.releaseDate= (releaseDate.Length > 0) ? releaseDate[0].TextContent : "";
+                        bookItem.releaseDate= (releaseDate.Length > 0) ? releaseDate[0].TextContent.Trim() : "";
                         // タイトル
                         if (title.Length > 0)
                         {
-                            bookItem.title  = title[0].TextContent;
-                            bookItem.link   = new Url(title[0].GetElementsByTagName("a")[0]?.GetAttribute("href")?.ToString());
+                            bookItem.title  = title[0].GetElementsByClassName("item-title__text")[0]?.TextContent.Trim();
+                            bookItem.link   = title[0].GetElementsByTagName("a")[0]?.GetAttribute("href")?.ToString().Trim();
                         }
                         // 作者
-                        bookItem.author     = (author.Length > 0) ? author[0].TextContent : "";
+                        bookItem.author     = (author.Length > 0) ? author[0].TextContent.Trim() : "";
                         // 価格
-                        bookItem.price      = (price.Length > 0)  ? price[0].TextContent  : "";
+                        bookItem.price      = (price.Length > 0)  ? price[0].TextContent.Trim() : "";
+                        // 画像リンク
+                        bookItem.imageLink = imgLink;
 
                         // 画像を取得する為の処理
-                        var response = await loader.FetchAsync(new DocumentRequest(new Url(((IHtmlImageElement)img[0]).Source))).Task;
+                        var response = await loader.FetchAsync(new DocumentRequest(new Url(imgLink))).Task;
                         using (var ms = new MemoryStream())
                         {
                             await response.Content.CopyToAsync(ms);
@@ -119,6 +137,7 @@ namespace rakuten_scraper
                     }
                 }
             }
+            SaveJson(date);
         }
 
         /// <summary>
@@ -176,6 +195,40 @@ namespace rakuten_scraper
             }
 
             return false;
+        }
+
+        public async Task<bool>LoadJson(DateTime date)
+        {
+            string filename = date.ToString("yyyy-MM") + ".json";
+            if (File.Exists(filename))
+            {
+                string json = File.ReadAllText(filename);
+                books = JsonSerializer.Deserialize<BindingList<BookItem>>(json);
+                if (books.Count > 0)
+                {
+                    foreach (BookItem book in books)
+                    {
+                        // 画像を取得する為の処理
+                        var response = await loader.FetchAsync(new DocumentRequest(new Url(book.imageLink))).Task;
+                        using (var ms = new MemoryStream())
+                        {
+                            await response.Content.CopyToAsync(ms);
+                            var bytes = ms.ToArray();
+                            book.image = ByteArrayToImage(bytes);
+                        }
+                    }
+                    return true; // loaded.
+                }
+            }
+            return false; // json not found.
+        }
+
+        private void SaveJson(DateTime date)
+        {
+            string json = JsonSerializer.Serialize(books, new JsonSerializerOptions { WriteIndented = true });
+
+            // JSON をファイルに保存
+            File.WriteAllText(date.ToString("yyyy-MM") + ".json", json);
         }
     }
 }

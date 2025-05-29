@@ -84,7 +84,7 @@
             Controls.Add(BookListGrid);
             Name = "MainWnd";
             Text = "Kobo Manga Scraper";
-            Load += Form1_Load;
+            Load += Form1_LoadAsync;
             ((System.ComponentModel.ISupportInitialize)BookListGrid).EndInit();
             ResumeLayout(false);
         }
