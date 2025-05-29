@@ -53,14 +53,14 @@
             BookListGrid.Size = new Size(890, 503);
             BookListGrid.TabIndex = 0;
             // 
-            // Form1
+            // MainWnd
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(914, 527);
             Controls.Add(BookListGrid);
-            Name = "Form1";
-            Text = "Form1";
+            Name = "MainWnd";
+            Text = "Kobo Manga Scraper";
             Load += Form1_Load;
             ((System.ComponentModel.ISupportInitialize)BookListGrid).EndInit();
             ResumeLayout(false);
