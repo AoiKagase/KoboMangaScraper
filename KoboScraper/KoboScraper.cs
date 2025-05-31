@@ -178,7 +178,7 @@ namespace rakuten_scraper
             CancelLoadImageThread();
 
             // 指定月で既に取得済みの本一覧データ
-            string filename = date.ToString("yyyy-MM") + ".json";
+            string filename = "data/" + date.ToString("yyyy-MM") + ".json";
 
             // 存在する場合
             if (File.Exists(filename))
@@ -216,7 +216,7 @@ namespace rakuten_scraper
             string json = JsonSerializer.Serialize(books, new JsonSerializerOptions { WriteIndented = true });
 
             // JSON をファイルに保存
-            File.WriteAllText(date.ToString("yyyy-MM") + ".json", json);
+            File.WriteAllText("data/" + date.ToString("yyyy-MM") + ".json", json);
 
             // 予約情報を一旦クリア
             reservations.Clear();
@@ -238,7 +238,7 @@ namespace rakuten_scraper
             json = JsonSerializer.Serialize(reservations, new JsonSerializerOptions { WriteIndented = true });
 
             // JSON をファイルに保存
-            File.WriteAllText(date.ToString("yyyy-MM") + "_reservations.json", json);
+            File.WriteAllText("data/" + date.ToString("yyyy-MM") + "_reservations.json", json);
         }
 
         /// <summary>
@@ -296,25 +296,36 @@ namespace rakuten_scraper
         private async void ImageLoader()
         {
             int i = 0;
-            // 既に取得済みの本一覧分回す
-            foreach (BookRecord book in this.books)
+            try
             {
-                // 画像URLへアクセス
-                var response = await loader.FetchAsync(new DocumentRequest(new Url(book.imageLink))).Task;
-                using (var ms = new MemoryStream())
+                // ループ中にスレッドキャンセルが発生した場合に
+                // 母体が消えるのでエラーが発生する為一時退避したものを利用する
+                BindingList<BookRecord> tempBooks = this.books;
+
+                // 既に取得済みの本一覧分回す
+                foreach (BookRecord book in tempBooks)
                 {
-                    // Byte情報を取得してImage化する
-                    await response.Content.CopyToAsync(ms);
-                    var bytes = ms.ToArray();
-                    book.image = ByteArrayToImage(bytes);
+                    // 画像URLへアクセス
+                    var response = await loader.FetchAsync(new DocumentRequest(new Url(book.imageLink))).Task;
+                    using (var ms = new MemoryStream())
+                    {
+                        // Byte情報を取得してImage化する
+                        await response.Content.CopyToAsync(ms);
+                        var bytes = ms.ToArray();
+                        book.image = ByteArrayToImage(bytes);
+                    }
+
+                    // 途中でThreadキャンセルが発生した場合はここで止める
+                    cts.Token.ThrowIfCancellationRequested();
+
+                    // プログレスバー用のカウンタを設定
+                    setProgress(i);
+                    i++;
                 }
-
-                // 途中でThreadキャンセルが発生した場合はここで止める
-                cts.Token.ThrowIfCancellationRequested();
-
-                // プログレスバー用のカウンタを設定
-                setProgress(i);
-                i++;
+            }
+            catch (Exception ex)
+            {
+                return;
             }
         }
 
@@ -325,7 +336,7 @@ namespace rakuten_scraper
         private void GetReservations(DateTime date)
         {
             // 指定月の予約情報ファイル
-            string filename = date.ToString("yyyy-MM") + "_reservations.json";
+            string filename = "data/" + date.ToString("yyyy-MM") + "_reservations.json";
 
             // 存在するなら
             if (File.Exists(filename))
