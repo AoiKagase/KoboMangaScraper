@@ -1,45 +1,203 @@
+using KoboScraper.models;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace rakuten_scraper
 {
     public partial class MainWnd : Form
     {
-        private BindingList<BookItem> _dataList;
+        /// -----------------------------------------------------------
+        /// <summary>
+        /// 気に入らないのでフォームの角丸を四角に戻す
+        /// </summary>
+        /// -----------------------------------------------------------
+        public enum DWMWINDOWATTRIBUTE
+        {
+            DWMWA_WINDOW_CORNER_PREFERENCE = 33
+        }
+
+        public enum DWM_WINDOW_CORNER_PREFERENCE
+        {
+            DWMWCP_DEFAULT = 0,
+            DWMWCP_DONOTROUND = 1,
+            DWMWCP_ROUND = 2,
+            DWMWCP_ROUNDSMALL = 3
+        }
+
+        [DllImport("dwmapi.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+        public static extern int DwmSetWindowAttribute(IntPtr hwnd, DWMWINDOWATTRIBUTE attribute, ref DWM_WINDOW_CORNER_PREFERENCE pvAttribute, uint cbAttribute);
+        /// -----------------------------------------------------------
+        /// <summary>
+        /// 月指定ドロップダウン時に月までしか選択させないようにする為の宣言
+        /// </summary>
+        private const int DTM_GETMONTHCAL = 0x1000 + 8;
+        private const int MCM_SETCURRENTVIEW = 0x1000 + 32;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);
+
+
+        /// -----------------------------------------------------------
+        /// <summary>
+        /// Form上で利用するグローバル変数
+        /// </summary>
+        /// -----------------------------------------------------------
+        // データバインド用のリスト
+        private BindingList<BookRecord> _dataList;
+        // スクレイパークラス
         private KoboScraper scraper = new KoboScraper();
 
+        /// <summary>
+        /// フォーム起動
+        /// </summary>
         public MainWnd()
         {
             InitializeComponent();
         }
 
-        private async void Form1_LoadAsync(object sender, EventArgs e)
+        #region Events
+        /// <summary>
+        /// フォームロード
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private async void MainWnd_LoadAsync(object sender, EventArgs e)
         {
-            dateTimePicker1.ValueChanged -= dateTimePicker1_ValueChanged;
-            dateTimePicker1.Format = DateTimePickerFormat.Custom;
-            dateTimePicker1.CustomFormat = "yyyy/MM";
-            dateTimePicker1.Value = DateTime.Now;
-            dateTimePicker1.ValueChanged += dateTimePicker1_ValueChanged;
+            // 気に入らないので画面の角枠の丸みを消す
+            var attribute = DWMWINDOWATTRIBUTE.DWMWA_WINDOW_CORNER_PREFERENCE;
+            var preference = DWM_WINDOW_CORNER_PREFERENCE.DWMWCP_DONOTROUND;
+            DwmSetWindowAttribute(this.Handle, attribute, ref preference, sizeof(uint));
 
-            await LoadDataAsync();
-            MessageBox.Show("�Ǎ�����", "Load", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // DatePickerのチェンジイベントが起動時も発火するため一時的に解除
+            CurrentMonthPicker.ValueChanged -= CurrentMonthPicker_ValueChanged;
+            // DatePickerのフォーマットをyyyy/MMへ変更し月で指定出来るように
+            CurrentMonthPicker.Format = DateTimePickerFormat.Custom;
+            CurrentMonthPicker.CustomFormat = "yyyy年 MM月";
+            // とりあえず今日の日付で
+            CurrentMonthPicker.Value = DateTime.Now;
+            // 解除したイベント再登録
+            CurrentMonthPicker.ValueChanged += CurrentMonthPicker_ValueChanged;
+
+            // 当月データをロード
+            await LoadDataAsync(CurrentMonthPicker.Value);
+
+            // ステータスバーの更新
+            ToolStripLabelStatusBook.Text = "本データロード完了";
         }
 
-        private async Task LoadDataAsync()
+        /// <summary>
+        /// 更新ボタン
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void BtmUpdate_Click(object sender, EventArgs e)
+        {
+            // 指定月の本一覧をスクレイプしなおす
+            scraper.getPage(CurrentMonthPicker.Value);
+        }
+
+        /// <summary>
+        /// DataGridのダブルクリック処理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void BookListGrid_CellContentDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            // セルの内容がクリックされたときの処理
+            if (e.RowIndex < 0 || e.ColumnIndex < 0)
+            {
+                return; // ヘッダー行やヘッダー列がクリックされた場合は何もしない
+            }
+
+            // 選択行の本をブラウザで開く
+            OpenUrl(_dataList[e.RowIndex].link.ToString());
+        }
+
+        /// <summary>
+        /// 保存ボタン
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void BtnSave_Click(object sender, EventArgs e)
+        {
+            // 現在の表示データをJSONで保存する
+            scraper.SaveJson(CurrentMonthPicker.Value);
+            // ステータスバーの更新
+            ToolStripLabelStatusBook.Text = "セーブ完了";
+        }
+
+        /// <summary>
+        /// 月指定チェンジ
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private async void CurrentMonthPicker_ValueChanged(object sender, EventArgs e)
+        {
+            // 指定した月でデータロード
+            await LoadDataAsync(CurrentMonthPicker.Value);
+            // ステータスバー更新
+            ToolStripLabelStatusBook.Text = "本データロード完了";
+        }
+        /// <summary>
+        /// 月指定ドロップダウン
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void CurrentMonthPicker_DropDown(object sender, EventArgs e)
+        {
+            DateTimePicker myDt = (DateTimePicker)sender;
+
+            IntPtr cal = SendMessage(CurrentMonthPicker.Handle, DTM_GETMONTHCAL, IntPtr.Zero, IntPtr.Zero);
+            SendMessage(cal, MCM_SETCURRENTVIEW, IntPtr.Zero, (IntPtr)1);
+        }
+
+        /// <summary>
+        /// プログレスバー更新用のタイマーイベント
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void UpdateProgressTimer_Tick(object sender, EventArgs e)
+        {
+            // 進捗によってステータスバー更新
+            if (scraper.progress < 100)
+                ToolStripLabelStatusImage.Text = "画像ロード中";
+            else
+                ToolStripLabelStatusImage.Text = "画像ロード完了";
+
+            // 現在の進捗設定
+            ToolStripProgressBar.Value = scraper.progress;
+
+            // 念のため
+            Application.DoEvents();
+        }
+        #endregion
+        #region Functions
+        /// <summary>
+        /// 起動時のロード処理
+        /// </summary>
+        /// <param name="date"></param>
+        /// <returns></returns>
+        private async Task LoadDataAsync(DateTime date)
         {
             try
             {
-                bool loaded = await scraper.LoadJson(dateTimePicker1.Value);
+                // 既存JSONデータからのロード(当月)
+                bool loaded = await scraper.LoadJson(date);
+
+                // Falseの場合は既存データが存在しない為、サーバーからスクレイプする
                 if (!loaded)
-                {
-                    scraper.getPage(dateTimePicker1.Value);
-                }
+                    scraper.getPage(date);
+
+                // バインド用変数への本一覧リストを格納
+                // これは直接後続で直接渡しても良いかもしれない
                 _dataList = scraper.books;
                 LoadDataIntoDataGridView(_dataList);
             }
             catch (Exception ex)
             {
+                // 念のためエラーが出たらメッセージボックス出して置く
                 MessageBox.Show(ex.Message,
                     "Error.",
                     MessageBoxButtons.AbortRetryIgnore,
@@ -47,34 +205,19 @@ namespace rakuten_scraper
             }
         }
 
-        private void LoadDataIntoDataGridView(BindingList<BookItem> dataList)
+        /// <summary>
+        /// DataGridへのバインド
+        /// </summary>
+        /// <param name="dataList"></param>
+        private void LoadDataIntoDataGridView(BindingList<BookRecord> dataList)
         {
-            // �f�[�^��ǂݍ���
+            // データをグリッドへ読み込む
             BookListGrid.DataSource = dataList;
+            // カラムの自動調整
             BookListGrid.AutoResizeColumns();
         }
-
-        private void button1_Click(object sender, EventArgs e)
-        {
-            scraper.getPage(dateTimePicker1.Value);
-        }
-
-        private void BookListGrid_CellContentClick(object sender, DataGridViewCellEventArgs e)
-        {
-
-        }
-
-        private void BookListGrid_CellContentDoubleClick(object sender, DataGridViewCellEventArgs e)
-        {
-            // �Z���̓��e���N���b�N���ꂽ�Ƃ��̏���
-            if (e.RowIndex < 0 || e.ColumnIndex < 0)
-            {
-                return; // �w�b�_�[�s��w�b�_�[�񂪃N���b�N���ꂽ�ꍇ�͉������Ȃ�
-            }
-            OpenUrl(_dataList[e.RowIndex].link.ToString());
-        }
         /// <summary>
-        /// URL������̃u���E�U�ŊJ��
+        /// URLを既定のブラウザで開く
         /// </summary>
         /// <param name="url">URL</param>
         /// <returns>Process</returns>
@@ -88,17 +231,6 @@ namespace rakuten_scraper
 
             return Process.Start(pi);
         }
-
-        private void button2_Click(object sender, EventArgs e)
-        {
-            scraper.SaveJson(dateTimePicker1.Value);
-            MessageBox.Show("�ۑ�����", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-
-        private async void dateTimePicker1_ValueChanged(object sender, EventArgs e)
-        {
-            await LoadDataAsync();
-            MessageBox.Show("�Ǎ�����", "Load", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
+        #endregion
     }
 }
