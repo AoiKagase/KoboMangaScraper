@@ -80,11 +80,14 @@ namespace rakuten_scraper
             // 解除したイベント再登録
             CurrentMonthPicker.ValueChanged += CurrentMonthPicker_ValueChanged;
 
+            // ステータスバー更新
+            ToolStripLabelStatusBook.Text = "本一覧読込中";
+
             // 当月データをロード
             await LoadDataAsync(CurrentMonthPicker.Value);
 
             // ステータスバーの更新
-            ToolStripLabelStatusBook.Text = "本データロード完了";
+            ToolStripLabelStatusBook.Text = "本一覧読込完了";
         }
 
         /// <summary>
@@ -94,8 +97,14 @@ namespace rakuten_scraper
         /// <param name="e"></param>
         private void BtmUpdate_Click(object sender, EventArgs e)
         {
+            // ステータスバー更新
+            ToolStripLabelStatusBook.Text = "本一覧読込中";
+
             // 指定月の本一覧をスクレイプしなおす
             scraper.getPage(CurrentMonthPicker.Value);
+
+            // ステータスバーの更新
+            ToolStripLabelStatusBook.Text = "本一覧読込完了";
         }
 
         /// <summary>
@@ -116,16 +125,65 @@ namespace rakuten_scraper
         }
 
         /// <summary>
+        /// DataGridのキーダウン処理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void BookListGrid_KeyDown(object sender, KeyEventArgs e)
+        {
+            // エンターキーの場合は処理しない（自動的に次の行を選択させない）
+            if (e.KeyData == Keys.Enter)
+            {
+                e.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// DataGridのキーアップ処理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void BookListGrid_KeyUp(object sender, KeyEventArgs e)
+        {
+            // エンターキーを押した場合はダブルクリックと同じ挙動
+            if (e.KeyData == Keys.Enter)
+            {
+                int rowIndex = BookListGrid.CurrentCell.OwningRow.Index;
+                // 選択行の本をブラウザで開く
+                OpenUrl(_dataList[rowIndex].link.ToString());
+            }
+        }
+
+        /// <summary>
+        /// DataGridの編集モード
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void BookListGrid_CellBeginEdit(object sender, DataGridViewCellCancelEventArgs e)
+        {
+            DataGridView dgv = (DataGridView)sender;
+
+            // 編集対象が予約チェック出ない場合は編集不可
+            if (dgv.Columns[e.ColumnIndex].Name != "isChecked")
+            {
+                //編集できないようにする
+                e.Cancel = true;
+            }
+        }
+
+        /// <summary>
         /// 保存ボタン
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private void BtnSave_Click(object sender, EventArgs e)
         {
+            // ステータスバーの更新
+            ToolStripLabelStatusBook.Text = "保存中";
             // 現在の表示データをJSONで保存する
             scraper.SaveJson(CurrentMonthPicker.Value);
             // ステータスバーの更新
-            ToolStripLabelStatusBook.Text = "セーブ完了";
+            ToolStripLabelStatusBook.Text = "保存完了";
         }
 
         /// <summary>
@@ -135,11 +193,14 @@ namespace rakuten_scraper
         /// <param name="e"></param>
         private async void CurrentMonthPicker_ValueChanged(object sender, EventArgs e)
         {
+            // ステータスバー更新
+            ToolStripLabelStatusBook.Text = "本一覧読込中";
             // 指定した月でデータロード
             await LoadDataAsync(CurrentMonthPicker.Value);
             // ステータスバー更新
-            ToolStripLabelStatusBook.Text = "本データロード完了";
+            ToolStripLabelStatusBook.Text = "本一覧読込完了";
         }
+
         /// <summary>
         /// 月指定ドロップダウン
         /// </summary>
@@ -149,6 +210,8 @@ namespace rakuten_scraper
         {
             DateTimePicker myDt = (DateTimePicker)sender;
 
+            // 普通にカレンダー開くと日まで指定しないといけないので
+            // 自動で月までカレンダーへ変更する
             IntPtr cal = SendMessage(CurrentMonthPicker.Handle, DTM_GETMONTHCAL, IntPtr.Zero, IntPtr.Zero);
             SendMessage(cal, MCM_SETCURRENTVIEW, IntPtr.Zero, (IntPtr)1);
         }
@@ -162,9 +225,9 @@ namespace rakuten_scraper
         {
             // 進捗によってステータスバー更新
             if (scraper.progress < 100)
-                ToolStripLabelStatusImage.Text = "画像ロード中";
+                ToolStripLabelStatusImage.Text = "画像読込中";
             else
-                ToolStripLabelStatusImage.Text = "画像ロード完了";
+                ToolStripLabelStatusImage.Text = "画像読込完了";
 
             // 現在の進捗設定
             ToolStripProgressBar.Value = scraper.progress;

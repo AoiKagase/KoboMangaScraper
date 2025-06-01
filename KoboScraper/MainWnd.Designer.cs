@@ -61,7 +61,10 @@
             BookListGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             BookListGrid.Size = new Size(899, 573);
             BookListGrid.TabIndex = 0;
+            BookListGrid.CellBeginEdit += BookListGrid_CellBeginEdit;
             BookListGrid.CellContentDoubleClick += BookListGrid_CellContentDoubleClick;
+            BookListGrid.KeyDown += BookListGrid_KeyDown;
+            BookListGrid.KeyUp += BookListGrid_KeyUp;
             // 
             // CurrentMonthPicker
             // 
@@ -107,15 +110,16 @@
             // ToolStripLabelStatusBook
             // 
             ToolStripLabelStatusBook.Name = "ToolStripLabelStatusBook";
-            ToolStripLabelStatusBook.Size = new Size(10, 17);
-            ToolStripLabelStatusBook.Text = " ";
-            ToolStripLabelStatusBook.TextAlign = ContentAlignment.BottomRight;
+            ToolStripLabelStatusBook.Size = new Size(34, 17);
+            ToolStripLabelStatusBook.Text = " TEST";
+            ToolStripLabelStatusBook.TextAlign = ContentAlignment.BottomLeft;
             // 
             // ToolStripLabelStatusImage
             // 
             ToolStripLabelStatusImage.Name = "ToolStripLabelStatusImage";
-            ToolStripLabelStatusImage.Size = new Size(10, 17);
-            ToolStripLabelStatusImage.Text = " ";
+            ToolStripLabelStatusImage.Size = new Size(31, 17);
+            ToolStripLabelStatusImage.Text = "TEST";
+            ToolStripLabelStatusImage.TextAlign = ContentAlignment.BottomLeft;
             // 
             // ToolStripProgressBar
             // 
