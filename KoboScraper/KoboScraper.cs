@@ -7,6 +7,7 @@ using System.ComponentModel.Design;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using KoboScraper.models;
+using KoboScraper;
 
 namespace rakuten_scraper
 {
@@ -93,7 +94,7 @@ namespace rakuten_scraper
         public async void getPage(DateTime date)
         {
             // 画像を取得する為の処理が既に走ってる場合はキャンセルさせる
-            if (imgLoader.Status == TaskStatus.Running)
+            if (imgLoader != null && imgLoader.Status == TaskStatus.Running)
                 cts.Cancel();
 
             // 取得する本のリストを初期化
@@ -191,7 +192,7 @@ namespace rakuten_scraper
                 if (books.Count > 0)
                 {
                     // 非同期でロードする
-                    StartLoadImageThread();
+                    // StartLoadImageThread();
 
                     // ついでに予約情報を持っているか読み込む
                     GetReservations(date);
@@ -252,17 +253,7 @@ namespace rakuten_scraper
         #endregion
 
         #region Private Method
-        /// <summary>
-        /// バイト配列をImageオブジェクトに変換
-        /// </summary>
-        /// <param name="b">変換前のバイト配列</param>
-        /// <returns>Imageデータ</returns>
-        private static Image ByteArrayToImage(byte[] b)
-        {
-            ImageConverter imgconv = new ImageConverter();
-            Image img = (Image)imgconv.ConvertFrom(b);
-            return img;
-        }
+
 
         /// <summary>
         /// むかつく分冊版に含まれるキーワードがタイトルに含まれているかチェック
@@ -296,7 +287,7 @@ namespace rakuten_scraper
         private async void ImageLoader()
         {
             int i = 0;
-            try
+            //try
             {
                 // ループ中にスレッドキャンセルが発生した場合に
                 // 母体が消えるのでエラーが発生する為一時退避したものを利用する
@@ -312,7 +303,7 @@ namespace rakuten_scraper
                         // Byte情報を取得してImage化する
                         await response.Content.CopyToAsync(ms);
                         var bytes = ms.ToArray();
-                        book.image = ByteArrayToImage(bytes);
+                        book.image ??= Common.ByteArrayToImage(bytes);
                     }
 
                     // 途中でThreadキャンセルが発生した場合はここで止める
@@ -323,10 +314,9 @@ namespace rakuten_scraper
                     i++;
                 }
             }
-            catch (Exception ex)
-            {
-                return;
-            }
+            //catch (Exception ex)
+            //{
+            //}
         }
 
         /// <summary>

@@ -29,6 +29,8 @@
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
+            DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle2 = new DataGridViewCellStyle();
             imageList1 = new ImageList(components);
             BookListGrid = new DataGridView();
             CurrentMonthPicker = new DateTimePicker();
@@ -54,15 +56,29 @@
             BookListGrid.AllowUserToAddRows = false;
             BookListGrid.AllowUserToDeleteRows = false;
             BookListGrid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            BookListGrid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders;
+            dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.BottomLeft;
+            dataGridViewCellStyle1.BackColor = SystemColors.Control;
+            dataGridViewCellStyle1.Font = new Font("Noto Sans JP", 9F, FontStyle.Regular, GraphicsUnit.Point, 128);
+            dataGridViewCellStyle1.ForeColor = SystemColors.WindowText;
+            dataGridViewCellStyle1.SelectionBackColor = SystemColors.Highlight;
+            dataGridViewCellStyle1.SelectionForeColor = SystemColors.HighlightText;
+            dataGridViewCellStyle1.WrapMode = DataGridViewTriState.False;
+            BookListGrid.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle1;
             BookListGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             BookListGrid.Location = new Point(24, 12);
             BookListGrid.Name = "BookListGrid";
             BookListGrid.RowHeadersVisible = false;
+            dataGridViewCellStyle2.Alignment = DataGridViewContentAlignment.BottomLeft;
+            BookListGrid.RowsDefaultCellStyle = dataGridViewCellStyle2;
+            BookListGrid.RowTemplate.Resizable = DataGridViewTriState.True;
             BookListGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             BookListGrid.Size = new Size(899, 573);
             BookListGrid.TabIndex = 0;
             BookListGrid.CellBeginEdit += BookListGrid_CellBeginEdit;
-            BookListGrid.CellContentDoubleClick += BookListGrid_CellContentDoubleClick;
+            BookListGrid.CellClick += BookListGrid_CellClick;
+            BookListGrid.CellDoubleClick += BookListGrid_CellDoubleClick;
+            BookListGrid.CellPainting += BookListGrid_CellPainting;
             BookListGrid.KeyDown += BookListGrid_KeyDown;
             BookListGrid.KeyUp += BookListGrid_KeyUp;
             // 
