@@ -31,13 +31,13 @@ namespace KoboScraper.models
 			{
 				if (value != null)
 				{
-                    // ロード時に1/2リサイズする
-                    _image = Common.ResizeImage(value, 0.5f);
+					// ロード時に1/2リサイズする
+					_image = Common.ResizeImage(value, 0.5f);
 
-                    // 画像ロードしたら次回起動時用にBase64形式も確保
-                    _imgSrc = Common.ImageToBase64(_image);
-                }
-            }
+					// 画像ロードしたら次回起動時用にBase64形式も確保
+					_imgSrc = Common.ImageToBase64(_image);
+				}
+			}
 		}
 
 		[DisplayName("タイトル")]
