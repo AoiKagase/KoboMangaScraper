@@ -15,12 +15,28 @@ namespace KoboScraper.models
 	{
 		private Image _image;
 		private string _imgSrc;
+		private string _releaseDate;
 
 		[DisplayName("予約")]
 		public bool isChecked { get; set; } = false; // DataGridViewのチェックボックス用
 		[DisplayName("発売日")]
+		[JsonIgnore]
 		[ReadOnly(true)]
-		public string? releaseDate { get; set; }
+		public string ReleaseDate
+		{
+			get {
+				if (DateTime.TryParse(_releaseDate, out DateTime date))
+					return date.ToString("MM月dd日");
+				else
+					return "";
+			}
+		}
+		[Browsable(false)]
+		public string? releaseDate
+		{
+			get { return _releaseDate; }
+			set { _releaseDate = !string.IsNullOrEmpty(value) ? value : ""; }
+		}
 		[DisplayName("画像")]
 		[ReadOnly(true)]
 		[JsonIgnore]

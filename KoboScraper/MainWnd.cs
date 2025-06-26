@@ -349,6 +349,8 @@ namespace rakuten_scraper
 			BookListGrid.DataSource = dataList;
 			// カラムの自動調整
 			BookListGrid.AutoResizeColumns();
+			BookListGrid.Sort(BookListGrid.Columns["releaseDate"], ListSortDirection.Descending);
+			BookListGrid.Refresh();
 		}
 		/// <summary>
 		/// URLを既定のブラウザで開く

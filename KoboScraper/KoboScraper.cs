@@ -20,7 +20,7 @@ namespace rakuten_scraper
 		/// <summary>
 		/// DataGridViewに対応する本の情報リスト
 		/// </summary>
-		public BindingList<BookRecord> books { get; set; } = new BindingList<BookRecord>();
+		public SortableBindingList<BookRecord> books { get; set; } = new SortableBindingList<BookRecord>();
 		/// <summary>
 		/// プログレスバー用
 		/// </summary>
@@ -29,7 +29,7 @@ namespace rakuten_scraper
 		/// <summary>
 		/// 予約情報
 		/// </summary>
-		private BindingList<BookReservation> reservations { get; set; } = new BindingList<BookReservation>();
+		private SortableBindingList<BookReservation> reservations { get; set; } = new SortableBindingList<BookReservation>();
 
 		/// <summary>
 		/// AngelSharpの設定
@@ -133,7 +133,7 @@ namespace rakuten_scraper
 						var imgLink             = (img.Length > 0) ? ((IHtmlImageElement)img[0]).Source?.Trim() : "";
 
 						// リリース日
-						bookRecord.releaseDate    = (releaseDate.Length > 0) ? releaseDate[0].TextContent.Trim() : "";
+						bookRecord.releaseDate  = (releaseDate.Length > 0) ? releaseDate[0].TextContent.Trim() : "";
 						// タイトル
 						if (title.Length > 0)
 						{
@@ -186,7 +186,7 @@ namespace rakuten_scraper
 			{
 				// 読み込んでリストへ展開する
 				string json = File.ReadAllText(filename);
-				books = JsonSerializer.Deserialize<BindingList<BookRecord>>(json);
+				books = JsonSerializer.Deserialize<SortableBindingList<BookRecord>>(json);
 
 				// 0件超えるなら画像を読み込む
 				if (books.Count > 0)
@@ -333,7 +333,7 @@ namespace rakuten_scraper
 			{
 				// 読み込んでリスト展開する
 				string json = File.ReadAllText(filename);
-				reservations = JsonSerializer.Deserialize<BindingList<BookReservation>>(json);
+				reservations = JsonSerializer.Deserialize<SortableBindingList<BookReservation>>(json);
 
 				// 本一覧リストとの突合せを行う
 				foreach (BookRecord book in books)
