@@ -102,7 +102,7 @@ namespace rakuten_scraper
 
 			// ページコントロールがめんどくさいのでとりあえず1000ページくらい回す
 			// 100で良いじゃろと思ったら200ページのパターンがあったわ
-			for (int i = 0; i < 1000; i++)
+			for (int i = 1; i < 1000; i++)
 			{
 				// とりあえずこのURLなら今のところいける
 				string urlstring = string.Format(@"https://books.rakuten.co.jp/calendar/101904/monthly/?tid={0}&s=14&p={1}#rclist", date.ToString("yyyy-MM-dd"), i);
