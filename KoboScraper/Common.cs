@@ -81,10 +81,18 @@ namespace KoboScraper
 		/// </summary>  
 		/// <param name="b">変換前のバイト配列</param>  
 		/// <returns>Imageデータ</returns>  
-		public static Image ByteArrayToImage(byte[] b)
+		public static Image? ByteArrayToImage(byte[] b)
 		{
 			ImageConverter imgconv = new ImageConverter();
-			Image img = (Image)imgconv.ConvertFrom(b);
+			Image? img = null;
+			try 
+			{
+				img = (Image?)imgconv.ConvertFrom(b);
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine("Error converting byte array to image: " + ex.Message);
+			}
 			return img;
 		}
 	}

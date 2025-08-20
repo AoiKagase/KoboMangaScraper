@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using KoboScraper.models;
 using KoboScraper;
+using System.Diagnostics;
 
 namespace rakuten_scraper
 {
@@ -25,6 +26,8 @@ namespace rakuten_scraper
 		/// プログレスバー用
 		/// </summary>
 		public int progress { get; set; }
+		public int countLoaded { get; set; } = 0;
+		public int countSkipped { get; set; } = 0;
 
 		/// <summary>
 		/// 予約情報
@@ -44,7 +47,7 @@ namespace rakuten_scraper
 		/// </summary>
 		private Task imgLoader;
 		private CancellationTokenSource cts = new CancellationTokenSource();
-
+		private string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0";
 		/// <summary>
 		/// むかつく分冊版に含まれるキーワード
 		/// これをすり抜けてくるやつ（通常のタイトルと見分けがつかない）
@@ -74,14 +77,15 @@ namespace rakuten_scraper
 		{
 			// AngelSharpの設定
 			// よく分からん
+			requester = CreateBrowserLikeRequester(this.UserAgent, false);
+
 			config = Configuration.Default
-									  .WithDefaultLoader()
-									  .WithDefaultCookies();
+					.With(requester)
+					.WithDefaultLoader()
+					.WithDefaultCookies();
 			context = BrowsingContext.New(config);
 
 			// とりあえずUser-Agentは誤魔化す
-			requester = context.GetService<DefaultHttpRequester>();
-			requester.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36";
 
 			// 画像取得用にloaderを作成しとく
 			loader = context.GetService<IDocumentLoader>();
@@ -102,10 +106,13 @@ namespace rakuten_scraper
 
 			// ページコントロールがめんどくさいのでとりあえず1000ページくらい回す
 			// 100で良いじゃろと思ったら200ページのパターンがあったわ
+			countLoaded = 0;
+			countSkipped = 0;
+
 			for (int i = 1; i < 1000; i++)
 			{
 				// とりあえずこのURLなら今のところいける
-				string urlstring = string.Format(@"https://books.rakuten.co.jp/calendar/101904/monthly/?tid={0}&s=14&p={1}#rclist", date.ToString("yyyy-MM-dd"), i);
+				string urlstring = string.Format(@"https://books.rakuten.co.jp/calendar/101904/monthly/?tid={0}&s=14&p={1}#rclist", date.ToString("yyyy-MM-01"), i);
 
 				// 楽天Koboのページを開く
 				var address = Url.Create(urlstring);
@@ -147,10 +154,16 @@ namespace rakuten_scraper
 						// 画像リンク
 						bookRecord.imageLink      = imgLink;
 
+						countLoaded++;
+
 						// むかつく分冊版の場合は排除するためスキップ
 						if (IsOneshotEpisode(bookRecord))
+						{
+							countSkipped++;
 							continue;
+						}
 
+						await Task.Delay(10);
 						// 本の情報を追加
 						books.Add(bookRecord);
 					}
@@ -296,22 +309,42 @@ namespace rakuten_scraper
 				// 既に取得済みの本一覧分回す
 				foreach (BookRecord book in tempBooks)
 				{
-					// 画像URLへアクセス
-					var response = await loader.FetchAsync(new DocumentRequest(new Url(book.imageLink))).Task;
-					using (var ms = new MemoryStream())
+					DocumentRequest dcRequester = new DocumentRequest(new Url(book.imageLink));
 					{
-						// Byte情報を取得してImage化する
-						await response.Content.CopyToAsync(ms);
-						var bytes = ms.ToArray();
-						book.image ??= Common.ByteArrayToImage(bytes);
-					}
+						// User-Agentを設定
+						dcRequester.Headers["User-Agent"] = this.UserAgent;
+						dcRequester.Headers["Upgrade-Insecure-Requests"] = "1";
+						dcRequester.Headers["DNT"] = "1"; // Do Not Track
+						dcRequester.Headers["Sec-Ch-Ua"] = "\"Not;A=Brand\"; v = \"99\", \"Microsoft Edge\"; v = \"139\", \"Chromium\"; v = \"139\"";
+						dcRequester.Headers["Sec-Ch-Ua-Mobile"] = "?0";
+						dcRequester.Headers["Sec-Ch-Ua-Platform"] = "Windows";
 
+						// 画像URLへアクセス
+						var response = await loader.FetchAsync(dcRequester).Task;
+						if (response?.Content != null)
+						{
+							using (MemoryStream ms = new MemoryStream())
+							{
+								// Byte情報を取得してImage化する
+								await response.Content.CopyToAsync(ms);
+								var bytes = ms.ToArray();
+								book.image ??= Common.ByteArrayToImage(bytes);
+								//using (var image = Image.FromStream(ms))
+								//{
+								//	book.image = (Image)image.Clone(); // 必要ならクローン
+								//}
+
+							}
+						}
+
+					}
 					// 途中でThreadキャンセルが発生した場合はここで止める
 					cts.Token.ThrowIfCancellationRequested();
 
 					// プログレスバー用のカウンタを設定
 					setProgress(i);
 					i++;
+					await Task.Delay(100);
 				}
 			}
 			//catch (Exception ex)
@@ -356,7 +389,7 @@ namespace rakuten_scraper
 		private void StartLoadImageThread()
 		{
 			// 画像ロードは非同期で行う
-			imgLoader = Task.Run(async () => ImageLoader(), cts.Token);
+			imgLoader = Task.Run(() => { ImageLoader(); return Task.CompletedTask; }, cts.Token);
 		}
 
 		/// <summary>
@@ -368,6 +401,32 @@ namespace rakuten_scraper
 			if (imgLoader != null && imgLoader.Status == TaskStatus.Running)
 				cts.Cancel();
 		}
+
+		private static DefaultHttpRequester CreateBrowserLikeRequester(string userAgent, bool image = false)
+		{
+			var requester = new DefaultHttpRequester();
+			requester.Headers["User-Agent"] = userAgent;
+			if (image)
+				requester.Headers["Accept"] = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
+			else
+				requester.Headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+	
+			requester.Headers["Accept-Language"] = "ja,en-US;q=0.7,en;q=0.3";
+			requester.Headers["Accept-Encoding"] = "gzip, deflate, br";
+			requester.Headers["Cache-Control"] = "no-cache";
+			requester.Headers["Pragma"] = "no-cache";
+			requester.Headers["Upgrade-Insecure-Requests"] = "1";
+			requester.Headers["Sec-Fetch-Dest"] = "document";
+			requester.Headers["Sec-Fetch-Mode"] = "navigate";
+			requester.Headers["Sec-Fetch-Site"] = "cross-site";
+			requester.Headers["Sec-Fetch-User"] = "?1";
+			requester.Headers["DNT"] = "1";
+			requester.Headers["Sec-Ch-Ua"] = "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"";
+			requester.Headers["Sec-Ch-Ua-Mobile"] = "?0";
+			requester.Headers["Sec-Ch-Ua-Platform"] = "Windows";
+			return requester;
+		}
+
 		#endregion
 	}
 }

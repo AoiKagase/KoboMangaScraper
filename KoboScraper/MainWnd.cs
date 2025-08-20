@@ -159,10 +159,10 @@ namespace rakuten_scraper
 		private void BookListGrid_KeyUp(object sender, KeyEventArgs e)
 		{
 			DataGridView dgv = (DataGridView)sender;
-            int rowIndex = dgv.CurrentCell.OwningRow.Index;
-            
+			int rowIndex = dgv.CurrentCell.OwningRow.Index;
+
 			// エンターキーを押した場合はダブルクリックと同じ挙動
-            switch (e.KeyData)
+			switch (e.KeyData)
 			{
 				case Keys.Enter:
 					// 選択行の本をブラウザで開く
@@ -302,7 +302,7 @@ namespace rakuten_scraper
 
 			// 現在の進捗設定
 			ToolStripProgressBar.Value = scraper.progress;
-
+			toolStripStatusCount.Text = $"Skip: {scraper.countSkipped} / 本数: {scraper.countLoaded}";
 			// 念のため
 			Application.DoEvents();
 		}
@@ -371,5 +371,9 @@ namespace rakuten_scraper
 
 
 
+		private void toolStripStatusCount_Click(object sender, EventArgs e)
+		{
+
+		}
 	}
 }

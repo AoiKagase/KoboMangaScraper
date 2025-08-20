@@ -37,6 +37,7 @@
 			BtnUpdate = new Button();
 			BtnSave = new Button();
 			statusStrip1 = new StatusStrip();
+			toolStripStatusCount = new ToolStripStatusLabel();
 			ToolStripLabelStatusBook = new ToolStripStatusLabel();
 			ToolStripLabelStatusImage = new ToolStripStatusLabel();
 			ToolStripProgressBar = new ToolStripProgressBar();
@@ -116,12 +117,19 @@
 			// 
 			// statusStrip1
 			// 
-			statusStrip1.Items.AddRange(new ToolStripItem[] { ToolStripLabelStatusBook, ToolStripLabelStatusImage, ToolStripProgressBar });
+			statusStrip1.Items.AddRange(new ToolStripItem[] { toolStripStatusCount, ToolStripLabelStatusBook, ToolStripLabelStatusImage, ToolStripProgressBar });
 			statusStrip1.Location = new Point(0, 621);
 			statusStrip1.Name = "statusStrip1";
 			statusStrip1.Size = new Size(940, 22);
 			statusStrip1.TabIndex = 4;
 			statusStrip1.Text = "statusStrip1";
+			// 
+			// toolStripStatusCount
+			// 
+			toolStripStatusCount.Name = "toolStripStatusCount";
+			toolStripStatusCount.Size = new Size(118, 17);
+			toolStripStatusCount.Text = "toolStripStatusLabel1";
+			toolStripStatusCount.Click += toolStripStatusCount_Click;
 			// 
 			// ToolStripLabelStatusBook
 			// 
@@ -145,6 +153,7 @@
 			// UpdateProgressTimer
 			// 
 			UpdateProgressTimer.Enabled = true;
+			UpdateProgressTimer.Interval = 1;
 			UpdateProgressTimer.Tick += UpdateProgressTimer_Tick;
 			// 
 			// MainWnd
@@ -182,5 +191,6 @@
 		private ToolStripProgressBar ToolStripProgressBar;
 		private System.Windows.Forms.Timer UpdateProgressTimer;
 		private ToolStripStatusLabel ToolStripLabelStatusImage;
+		private ToolStripStatusLabel toolStripStatusCount;
 	}
 }
