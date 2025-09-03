@@ -1,3 +1,4 @@
+using AngleSharp.Io;
 using KoboScraper.models;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -45,7 +46,7 @@ namespace rakuten_scraper
 		/// </summary>
 		/// -----------------------------------------------------------
 		// データバインド用のリスト
-		private BindingList<BookRecord> _dataList;
+		private BindingList<BookRecord>? _dataList;
 		// スクレイパークラス
 		private KoboScraper scraper = new KoboScraper();
 
@@ -108,16 +109,20 @@ namespace rakuten_scraper
 		/// </summary>
 		/// <param name="sender"></param>
 		/// <param name="e"></param>
-		private void BtmUpdate_Click(object sender, EventArgs e)
+		private async void BtmUpdate_Click(object sender, EventArgs e)
 		{
-			// ステータスバー更新
 			ToolStripLabelStatusBook.Text = "本一覧読込中";
 
-			// 指定月の本一覧をスクレイプしなおす
-			scraper.getPage(CurrentMonthPicker.Value);
-
-			// ステータスバーの更新
-			ToolStripLabelStatusBook.Text = "本一覧読込完了";
+			try
+			{
+				await scraper.getPageAsync(CurrentMonthPicker.Value);
+				ToolStripLabelStatusBook.Text = "本一覧読込完了";
+			}
+			catch (Exception ex)
+			{
+				ToolStripLabelStatusBook.Text = "読込失敗";
+				Debug.WriteLine($"getPage failed: {ex.Message}");
+			}
 		}
 
 		/// <summary>
@@ -133,8 +138,18 @@ namespace rakuten_scraper
 				return; // ヘッダー行やヘッダー列がクリックされた場合は何もしない
 			}
 
+			if (_dataList == null)
+				return;
+
+			if (e.RowIndex < 0 || e.RowIndex >= _dataList.Count)
+				return;
+
+			var row = _dataList[e.RowIndex];
+			if (string.IsNullOrEmpty(row.link))
+				return;
+
 			// 選択行の本をブラウザで開く
-			OpenUrl(_dataList[e.RowIndex].link.ToString());
+			OpenUrl(row.link.ToString());
 		}
 
 		/// <summary>
@@ -159,23 +174,39 @@ namespace rakuten_scraper
 		private void BookListGrid_KeyUp(object sender, KeyEventArgs e)
 		{
 			DataGridView dgv = (DataGridView)sender;
-			int rowIndex = dgv.CurrentCell.OwningRow.Index;
+			var currentCell = dgv.CurrentCell;
+			if (currentCell == null)
+				return;
+
+			if (currentCell.OwningRow == null)
+				return;
+
+			int rowIndex = currentCell.OwningRow.Index;
 
 			// エンターキーを押した場合はダブルクリックと同じ挙動
 			switch (e.KeyData)
 			{
 				case Keys.Enter:
 					// 選択行の本をブラウザで開く
-					OpenUrl(_dataList[rowIndex].link.ToString());
+					if (_dataList == null)
+						return;
+
+					if (rowIndex < 0 || rowIndex >= _dataList.Count)
+						return;
+
+					var cell = _dataList[rowIndex];
+					if (cell != null && !string.IsNullOrEmpty(cell.link))
+						OpenUrl(cell.link.ToString());
+
 					break;
 				case Keys.Space:
 					// スペースキーを押した場合はチェックボックスのトグル
-					var cell = dgv["IsChecked", rowIndex] as DataGridViewCheckBoxCell;
-					if (cell != null)
+					var cell_check = dgv["IsChecked", rowIndex] as DataGridViewCheckBoxCell;
+					if (cell_check != null)
 					{
 						// チェック状態をトグル
-						bool current = (bool)(cell.Value ?? false);
-						cell.Value = !current;
+						bool current = (bool)(cell_check.Value ?? false);
+						cell_check.Value = !current;
 						dgv.RefreshEdit();
 					}
 					break;
@@ -213,10 +244,18 @@ namespace rakuten_scraper
 				if (dgv.Columns[e.ColumnIndex] is DataGridViewCheckBoxColumn)
 				{
 					e.PaintBackground(e.CellBounds, true);
-					ControlPaint.DrawCheckBox(e.Graphics, e.CellBounds.X + 2, e.CellBounds.Y + (e.CellBounds.Height - e.CellBounds.Width - 2) + 2,
-						e.CellBounds.Width - 4, e.CellBounds.Width - 4,
-						(bool)e.FormattedValue ? (ButtonState.Checked | ButtonState.Flat) : (ButtonState.Normal | ButtonState.Flat));
-					e.Handled = true;
+
+					if (e.Graphics == null)
+						return;
+
+					bool? formattedValue = (bool)(e.FormattedValue ?? false);
+					if (formattedValue != null)
+					{
+						ControlPaint.DrawCheckBox(e.Graphics, e.CellBounds.X + 2, e.CellBounds.Y + (e.CellBounds.Height - e.CellBounds.Width - 2) + 2,
+							e.CellBounds.Width - 4, e.CellBounds.Width - 4,
+							(bool)formattedValue ? (ButtonState.Checked | ButtonState.Flat) : (ButtonState.Normal | ButtonState.Flat));
+						e.Handled = true;
+					}
 				}
 			}
 		}
@@ -235,9 +274,12 @@ namespace rakuten_scraper
 				{
 					var cell = dgv[e.ColumnIndex, e.RowIndex] as DataGridViewCheckBoxCell;
 					// チェック状態をトグル
-					bool current = (bool)(cell.Value ?? false);
-					cell.Value = !current;
-					dgv.RefreshEdit();
+					if (cell != null)
+					{
+						bool current = (bool)(cell.Value ?? false);
+						cell.Value = !current;
+						dgv.RefreshEdit();
+					}
 				}
 			}
 		}
@@ -295,14 +337,18 @@ namespace rakuten_scraper
 		private void UpdateProgressTimer_Tick(object sender, EventArgs e)
 		{
 			// 進捗によってステータスバー更新
-			if (scraper.progress < 100)
+			if (scraper.IsImageLoading)
+			{
+				BookListGrid.Refresh();
 				ToolStripLabelStatusImage.Text = "画像読込中";
+			}
 			else
 				ToolStripLabelStatusImage.Text = "画像読込完了";
 
 			// 現在の進捗設定
-			ToolStripProgressBar.Value = scraper.progress;
-			toolStripStatusCount.Text = $"Skip: {scraper.countSkipped} / 本数: {scraper.countLoaded}";
+			ToolStripProgressBar.Value = scraper.ImageLoadProgress;
+			toolStripStatusCount.Text = $"Skip: {scraper.CountBookSkipped} / Books: {scraper.CountBookLoaded}";
+			toolStripStatusImages.Text = $"Loaded: {scraper.CountImageLoaded} / Books: {scraper.CountBookLoaded - scraper.CountBookSkipped}";
 			// 念のため
 			Application.DoEvents();
 		}
@@ -318,11 +364,11 @@ namespace rakuten_scraper
 			try
 			{
 				// 既存JSONデータからのロード(当月)
-				bool loaded = await scraper.LoadJson(date);
+				bool loaded = scraper.LoadJson(date);
 
 				// Falseの場合は既存データが存在しない為、サーバーからスクレイプする
 				if (!loaded)
-					scraper.getPage(date);
+					await scraper.getPageAsync(date);
 
 				// バインド用変数への本一覧リストを格納
 				// これは直接後続で直接渡しても良いかもしれない
@@ -349,7 +395,12 @@ namespace rakuten_scraper
 			BookListGrid.DataSource = dataList;
 			// カラムの自動調整
 			BookListGrid.AutoResizeColumns();
-			BookListGrid.Sort(BookListGrid.Columns["releaseDate"], ListSortDirection.Descending);
+			if (BookListGrid.Columns != null)
+			{
+				var releaseDateColumn = BookListGrid.Columns["releaseDate"];
+				if (releaseDateColumn != null)
+					BookListGrid.Sort(releaseDateColumn, ListSortDirection.Descending);
+			}
 			BookListGrid.Refresh();
 		}
 		/// <summary>
@@ -357,7 +408,7 @@ namespace rakuten_scraper
 		/// </summary>
 		/// <param name="url">URL</param>
 		/// <returns>Process</returns>
-		private Process OpenUrl(string url)
+		private Process? OpenUrl(string url)
 		{
 			ProcessStartInfo pi = new ProcessStartInfo()
 			{
@@ -374,6 +425,33 @@ namespace rakuten_scraper
 		private void toolStripStatusCount_Click(object sender, EventArgs e)
 		{
 
+		}
+
+		private void BtnReloadImg_Click(object sender, EventArgs e)
+		{
+			if (scraper == null || scraper.books == null)
+			{
+				MessageBox.Show("本一覧が読み込まれていません。先に本一覧を読み込んでください。",
+					"Error.",
+					MessageBoxButtons.OK,
+					MessageBoxIcon.Error);
+				return;
+			}
+			else
+			{
+				if (!scraper.IsImageLoading)
+				{
+					// 画像再読込
+					scraper.StartLoadImageThread();
+				}
+				else
+				{
+					MessageBox.Show("画像読込中です。しばらくお待ちください。",
+						"Info.",
+						MessageBoxButtons.OK,
+						MessageBoxIcon.Information);
+				}
+			}
 		}
 	}
 }

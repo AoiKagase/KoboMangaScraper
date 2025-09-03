@@ -29,19 +29,21 @@
 		private void InitializeComponent()
 		{
 			components = new System.ComponentModel.Container();
-			DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
-			DataGridViewCellStyle dataGridViewCellStyle2 = new DataGridViewCellStyle();
+			DataGridViewCellStyle dataGridViewCellStyle3 = new DataGridViewCellStyle();
+			DataGridViewCellStyle dataGridViewCellStyle4 = new DataGridViewCellStyle();
 			imageList1 = new ImageList(components);
 			BookListGrid = new DataGridView();
 			CurrentMonthPicker = new DateTimePicker();
 			BtnUpdate = new Button();
 			BtnSave = new Button();
 			statusStrip1 = new StatusStrip();
+			toolStripStatusImages = new ToolStripStatusLabel();
 			toolStripStatusCount = new ToolStripStatusLabel();
 			ToolStripLabelStatusBook = new ToolStripStatusLabel();
 			ToolStripLabelStatusImage = new ToolStripStatusLabel();
 			ToolStripProgressBar = new ToolStripProgressBar();
 			UpdateProgressTimer = new System.Windows.Forms.Timer(components);
+			BtnReloadImg = new Button();
 			((System.ComponentModel.ISupportInitialize)BookListGrid).BeginInit();
 			statusStrip1.SuspendLayout();
 			SuspendLayout();
@@ -58,20 +60,20 @@
 			BookListGrid.AllowUserToDeleteRows = false;
 			BookListGrid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 			BookListGrid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders;
-			dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.BottomLeft;
-			dataGridViewCellStyle1.BackColor = SystemColors.Control;
-			dataGridViewCellStyle1.Font = new Font("Noto Sans JP", 9F, FontStyle.Regular, GraphicsUnit.Point, 128);
-			dataGridViewCellStyle1.ForeColor = SystemColors.WindowText;
-			dataGridViewCellStyle1.SelectionBackColor = SystemColors.Highlight;
-			dataGridViewCellStyle1.SelectionForeColor = SystemColors.HighlightText;
-			dataGridViewCellStyle1.WrapMode = DataGridViewTriState.False;
-			BookListGrid.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle1;
+			dataGridViewCellStyle3.Alignment = DataGridViewContentAlignment.BottomLeft;
+			dataGridViewCellStyle3.BackColor = SystemColors.Control;
+			dataGridViewCellStyle3.Font = new Font("Noto Sans JP", 9F, FontStyle.Regular, GraphicsUnit.Point, 128);
+			dataGridViewCellStyle3.ForeColor = SystemColors.WindowText;
+			dataGridViewCellStyle3.SelectionBackColor = SystemColors.Highlight;
+			dataGridViewCellStyle3.SelectionForeColor = SystemColors.HighlightText;
+			dataGridViewCellStyle3.WrapMode = DataGridViewTriState.False;
+			BookListGrid.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle3;
 			BookListGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 			BookListGrid.Location = new Point(24, 12);
 			BookListGrid.Name = "BookListGrid";
 			BookListGrid.RowHeadersVisible = false;
-			dataGridViewCellStyle2.Alignment = DataGridViewContentAlignment.BottomLeft;
-			BookListGrid.RowsDefaultCellStyle = dataGridViewCellStyle2;
+			dataGridViewCellStyle4.Alignment = DataGridViewContentAlignment.BottomLeft;
+			BookListGrid.RowsDefaultCellStyle = dataGridViewCellStyle4;
 			BookListGrid.RowTemplate.Resizable = DataGridViewTriState.True;
 			BookListGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
 			BookListGrid.Size = new Size(899, 573);
@@ -117,12 +119,18 @@
 			// 
 			// statusStrip1
 			// 
-			statusStrip1.Items.AddRange(new ToolStripItem[] { toolStripStatusCount, ToolStripLabelStatusBook, ToolStripLabelStatusImage, ToolStripProgressBar });
+			statusStrip1.Items.AddRange(new ToolStripItem[] { toolStripStatusImages, toolStripStatusCount, ToolStripLabelStatusBook, ToolStripLabelStatusImage, ToolStripProgressBar });
 			statusStrip1.Location = new Point(0, 621);
 			statusStrip1.Name = "statusStrip1";
 			statusStrip1.Size = new Size(940, 22);
 			statusStrip1.TabIndex = 4;
 			statusStrip1.Text = "statusStrip1";
+			// 
+			// toolStripStatusImages
+			// 
+			toolStripStatusImages.Name = "toolStripStatusImages";
+			toolStripStatusImages.Size = new Size(118, 17);
+			toolStripStatusImages.Text = "toolStripStatusLabel1";
 			// 
 			// toolStripStatusCount
 			// 
@@ -156,12 +164,24 @@
 			UpdateProgressTimer.Interval = 1;
 			UpdateProgressTimer.Tick += UpdateProgressTimer_Tick;
 			// 
+			// BtnReloadImg
+			// 
+			BtnReloadImg.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+			BtnReloadImg.Location = new Point(686, 591);
+			BtnReloadImg.Name = "BtnReloadImg";
+			BtnReloadImg.Size = new Size(75, 25);
+			BtnReloadImg.TabIndex = 5;
+			BtnReloadImg.Text = "画像最新化";
+			BtnReloadImg.UseVisualStyleBackColor = true;
+			BtnReloadImg.Click += BtnReloadImg_Click;
+			// 
 			// MainWnd
 			// 
 			AutoScaleDimensions = new SizeF(7F, 17F);
 			AutoScaleMode = AutoScaleMode.Font;
 			AutoScroll = true;
 			ClientSize = new Size(940, 643);
+			Controls.Add(BtnReloadImg);
 			Controls.Add(statusStrip1);
 			Controls.Add(BtnSave);
 			Controls.Add(BtnUpdate);
@@ -192,5 +212,7 @@
 		private System.Windows.Forms.Timer UpdateProgressTimer;
 		private ToolStripStatusLabel ToolStripLabelStatusImage;
 		private ToolStripStatusLabel toolStripStatusCount;
+		private ToolStripStatusLabel toolStripStatusImages;
+		private Button BtnReloadImg;
 	}
 }

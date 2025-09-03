@@ -29,7 +29,7 @@ namespace KoboScraper
 		/// <summary>
 		/// ソートを行う抽象化プロパティ
 		/// </summary>
-		private PropertyDescriptor sortProperty;
+		private PropertyDescriptor? sortProperty;
 
 		/// <summary>
 		/// SortableBindingList クラス の 新しいインスタンス を初期化します。
@@ -74,7 +74,7 @@ namespace KoboScraper
 		/// <summary>
 		/// ソートに利用する抽象化プロパティを取得します。
 		/// </summary>
-		protected override PropertyDescriptor SortPropertyCore
+		protected override PropertyDescriptor? SortPropertyCore
 		{
 			get { return this.sortProperty; }
 		}
@@ -140,8 +140,8 @@ namespace KoboScraper
 		/// <returns>比較結果</returns>
 		private int OnComparison(T lhs, T rhs)
 		{
-			object lhsValue = (lhs == null) ? null : this.sortProperty.GetValue(lhs);
-			object rhsValue = (rhs == null) ? null : this.sortProperty.GetValue(rhs);
+			object? lhsValue = (lhs == null) ? null : this.sortProperty?.GetValue(lhs);
+			object? rhsValue = (rhs == null) ? null : this.sortProperty?.GetValue(rhs);
 
 			if (lhsValue == null)
 			{
@@ -163,7 +163,15 @@ namespace KoboScraper
 				return 0;
 			}
 
-			return lhsValue.ToString().CompareTo(rhsValue.ToString());
+			if (lhsValue != null)
+			{
+				string? result = lhsValue.ToString();
+				if (result != null)
+				{
+					return result.CompareTo(rhsValue.ToString());
+				}
+			}
+			return -1;
 		}
 	}
 }

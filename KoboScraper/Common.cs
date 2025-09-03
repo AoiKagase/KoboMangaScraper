@@ -1,10 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Image = SixLabors.ImageSharp.Image;
+using Rectangle = System.Drawing.Rectangle;
 
 namespace KoboScraper
 {
@@ -15,7 +14,7 @@ namespace KoboScraper
 		/// </summary>  
 		/// <param name="image"></param>  
 		/// <returns></returns>  
-		public static string ImageToBase64(Image image)
+		public static string ImageToBase64(System.Drawing.Image image)
 		{
 			using (MemoryStream m = new MemoryStream())
 			{
@@ -31,13 +30,16 @@ namespace KoboScraper
 		/// </summary>  
 		/// <param name="base64String"></param>  
 		/// <returns></returns>  
-		public static Image Base64ToImage(string base64String)
+		public static System.Drawing.Image Base64ToImage(string base64String)
 		{
 			byte[] imageBytes = Convert.FromBase64String(base64String);
 			using (MemoryStream ms = new MemoryStream(imageBytes))
 			{
-				Image image = Image.FromStream(ms);
-				return image;
+				System.Drawing.Image? img = MemoryToImage(ms);
+				if (img != null)
+					return img;
+				else
+					throw new Exception("Base64ToImage failed");
 			}
 		}
 
@@ -48,7 +50,7 @@ namespace KoboScraper
 		/// <param name="image"></param>  
 		/// <param name="resize"></param>  
 		/// <returns></returns>  
-		public static Image ResizeImage(Image image, float resize)
+		public static System.Drawing.Image ResizeImage(System.Drawing.Image image, float resize)
 		{
 			int width = (int)(image.Width * resize);
 			int height = (int)(image.Height * resize);
@@ -77,23 +79,27 @@ namespace KoboScraper
 		}
 
 		/// <summary>  
-		/// バイト配列をImageオブジェクトに変換  
+		/// MemoryStreamをImageオブジェクトに変換  
 		/// </summary>  
-		/// <param name="b">変換前のバイト配列</param>  
+		/// <param name="ms">変換前MemoryStream</param>  
 		/// <returns>Imageデータ</returns>  
-		public static Image? ByteArrayToImage(byte[] b)
+		public static System.Drawing.Image? MemoryToImage(MemoryStream ms)
 		{
-			ImageConverter imgconv = new ImageConverter();
 			Image? img = null;
-			try 
+			try
 			{
-				img = (Image?)imgconv.ConvertFrom(b);
+				using (MemoryStream outms = new MemoryStream())
+				{
+					img = Image.Load(ms);
+					img.SaveAsJpeg(outms);
+					return System.Drawing.Image.FromStream(outms);
+				}
 			}
 			catch (Exception ex)
 			{
 				Console.WriteLine("Error converting byte array to image: " + ex.Message);
 			}
-			return img;
+			return null;
 		}
 	}
 }

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Image = System.Drawing.Image;
 
 namespace KoboScraper.models
 {
@@ -13,9 +14,9 @@ namespace KoboScraper.models
 	/// </summary>
 	internal class BookRecord
 	{
-		private Image _image;
-		private string _imgSrc;
-		private string _releaseDate;
+		private Image? _image;
+		private string? _imgSrc;
+		private string? _releaseDate;
 
 		[DisplayName("予約")]
 		public bool isChecked { get; set; } = false; // DataGridViewのチェックボックス用
@@ -48,7 +49,7 @@ namespace KoboScraper.models
 				if (value != null)
 				{
 					// ロード時に1/2リサイズする
-					_image = Common.ResizeImage(value, 0.5f);
+					_image = Common.ResizeImage(value, 0.2f);
 
 					// 画像ロードしたら次回起動時用にBase64形式も確保
 					_imgSrc = Common.ImageToBase64(_image);
