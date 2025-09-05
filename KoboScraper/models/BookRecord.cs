@@ -49,10 +49,10 @@ namespace KoboScraper.models
 				if (value != null)
 				{
 					// ロード時に1/2リサイズする
-					_image = Common.ResizeImage(value, 0.2f);
+					_image = value;
 
 					// 画像ロードしたら次回起動時用にBase64形式も確保
-					_imgSrc = Common.ImageToBase64(_image);
+//					_imgSrc = Common.ImageToBase64(_image);
 				}
 			}
 		}
@@ -74,14 +74,20 @@ namespace KoboScraper.models
 			set
 			{
 				// Base64形式で持っているはずで、起動時にロードされる物
+				if (value != null)
+				if (_imgSrc == null && _image == null)
+					_image = Common.Base64ToImage(value);
+
 				_imgSrc = value;
-				if (_imgSrc != null)
-					_image = Common.Base64ToImage(_imgSrc);
 			}
 		}
 		[Browsable(false)]
 		public string? link { get; set; }
 		[Browsable(false)]
 		public string? imageLink { get; set; }
+		[Browsable(false)]
+		public string? imageEtag { get; set; }
+		[Browsable(false)]
+		public string? imageLastModified { get; set; }
 	}
 }

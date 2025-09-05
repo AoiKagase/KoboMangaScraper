@@ -4,12 +4,9 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Io;
 using KoboScraper;
 using KoboScraper.models;
-using System.Buffers.Text;
+using StreamJsonRpc;
 using System.ComponentModel;
-using System.ComponentModel.Design;
 using System.Diagnostics;
-using System.IO.Compression;
-using System.IO.Pipelines;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -30,9 +27,12 @@ namespace rakuten_scraper
 		/// プログレスバー用
 		/// </summary>
 		public int ImageLoadProgress { get; set; }
-		public int CountBookLoaded { get; set; } = 0;
-		public int CountBookSkipped { get; set; } = 0;
-		public int CountImageLoaded { get; set; } = 0;
+		private int _countBookLoaded = 0;
+		public int CountBookLoaded { get => _countBookLoaded; set => _countBookLoaded = value; }
+		private int _countBookSkipped = 0;
+		public int CountBookSkipped { get => _countBookSkipped; set => _countBookSkipped = value; }
+		private int _countImageLoded = 0;
+		public int CountImageLoaded { get => _countImageLoded; set => _countImageLoded = value; }
 		public bool IsImageLoading { get; private set; } = false;
 		/// <summary>
 		/// 予約情報
@@ -62,6 +62,7 @@ namespace rakuten_scraper
 		/// </summary>
 		private static string[] OneshotRegex =
 		{
+			"特装版",
 			"単話",
 			"分冊",
 			"話売り",
@@ -69,9 +70,17 @@ namespace rakuten_scraper
 			"話】",
 			"連載版",
 			"【短編】",
-			"第[0-9|０-９]+話",
+			@"第\s*[0-9０-９]+話",
 		};
 
+		/// <summary>
+		/// スレッド最大数
+		/// </summary>
+		private const int MAX_THREAD_COUNT = 4;
+		/// <summary>
+		/// 分冊版排除のスコア閾値
+		/// </summary>
+		private const int ONSHOT_SCORE = 3;
 		#endregion
 
 		#region Class Method
@@ -82,7 +91,7 @@ namespace rakuten_scraper
 		{
 			// AngelSharpの設定
 			// よく分からん
-			requester = CreateBrowserLikeRequester(this.UserAgent, false);
+			requester = CreateBrowserLikeRequester(this.UserAgent);
 
 			config = Configuration.Default
 					.With(requester)
@@ -109,96 +118,142 @@ namespace rakuten_scraper
 			// 取得する本のリストを初期化
 			books.Clear();
 
-			// ページコントロールがめんどくさいのでとりあえず1000ページくらい回す
-			// 100で良いじゃろと思ったら200ページのパターンがあったわ
 			CountBookLoaded = 0;
 			CountBookSkipped = 0;
-			var addresses = Dns.GetHostAddressesAsync("books.rakuten.co.jp");
 
-			for (int i = 1; i < 1000; i++)
-			{ 
-				try
+			var semaphore = new SemaphoreSlim(MAX_THREAD_COUNT); // 最大4並列
+			var tempBooks = new List<BookRecord>();
+			var tasks = new List<Task>();
+
+			int currentPage = 1;
+			bool stopFlag = false;
+			object pageLock = new object();
+
+			for(int t = 0; t < MAX_THREAD_COUNT; t++)
+			{
+				tasks.Add(Task.Run(async () =>
 				{
-					// とりあえずこのURLなら今のところいける
-					string baseurl = $"https://books.rakuten.co.jp/calendar/101904/monthly/";
-					Url address = new Url(baseurl);
-
-					// クエリパラメータを設定
-					address.SearchParams.Set("tid", date.ToString("yyyy-MM-01"));	// 指定月の1日を指定する
-					address.SearchParams.Set("s", "14");							// 発売日順
-					address.SearchParams.Set("p", i.ToString());                    // ページ番号
-					address.Fragment = "rclist";                                    // 表示形式(リスト表示)
-					Debug.WriteLine($"URL: {address.ToString()}");
-					var swStep = Stopwatch.StartNew();
-
-					// 楽天Koboのページを開く
-					using (var document = await context.OpenAsync(address))
+					while (true)
 					{
-						swStep.Stop();
-						Debug.WriteLine($"[{i}] OpenAsync: {swStep.ElapsedMilliseconds} ms");
-						swStep.Restart();
-
-						// 本一覧を取得
-						var booksElement = document.QuerySelector(".rb-items-list--list");
-						swStep.Stop();
-						Debug.WriteLine($"[{i}] QuerySelector: {swStep.ElapsedMilliseconds} ms");
-						swStep.Restart();
-						// Nullなら取得出来てないので1000ページ回すまでもなく終わる
-						if (booksElement == null)
-							break;
-
-						// 本のリスト分回す
-						foreach (var book in booksElement.GetElementsByClassName("item"))
+						await semaphore.WaitAsync();
+						int pageIndex;
+						lock (pageLock)
 						{
-							// 表示させるための本の情報作る
-							BookRecord bookRecord = new BookRecord();
-
-							// パース
-							var releaseDate = book.GetElementsByClassName("item-release__date");
-							var title = book.GetElementsByClassName("item-title");
-							var author = book.GetElementsByClassName("item-author__name");
-							var price = book.GetElementsByClassName("item-pricing__price");
-							var img = book.GetElementsByTagName("img");
-							var imgLink = (img.Length > 0) ? ((IHtmlImageElement)img[0]).Source?.Trim() : "";
-							imgLink = imgLink?.Split('?')[0]; // 画像URLの後ろにパラメータが付いてる場合があるので除去
-							// リリース日
-							bookRecord.releaseDate = (releaseDate.Length > 0) ? releaseDate[0].TextContent.Trim() : "";
-							// タイトル
-							if (title.Length > 0)
+							// ページコントロールがめんどくさいのでとりあえず1000ページくらい回す
+							// 100で良いじゃろと思ったら200ページのパターンがあったわ
+							if (stopFlag || currentPage >= 1000)
 							{
-								bookRecord.title = title[0].GetElementsByClassName("item-title__text")[0]?.TextContent.Trim();
-								bookRecord.link = title[0].GetElementsByTagName("a")[0]?.GetAttribute("href")?.ToString().Trim();
+								semaphore.Release();
+								break;
 							}
-							// 作者
-							bookRecord.author = (author.Length > 0) ? author[0].TextContent.Trim() : "";
-							// 価格
-							bookRecord.price = (price.Length > 0) ? price[0].TextContent.Trim() : "";
-							// 画像リンク
-							bookRecord.imageLink = imgLink;
-
-							CountBookLoaded++;
-
-							// むかつく分冊版の場合は排除するためスキップ
-							if (IsOneshotEpisode(bookRecord))
-							{
-								CountBookSkipped++;
-								continue;
-							}
-
-							// 本の情報を追加
-							books.Add(bookRecord);
+							pageIndex = currentPage++;
 						}
-						swStep.Stop();
-						Debug.WriteLine($"[{i}] Parse: {swStep.ElapsedMilliseconds} ms");
-						swStep.Restart();
-						await Task.Delay(1);
+
+						try
+						{
+							// とりあえずこのURLなら今のところいける
+							string baseurl = $"https://books.rakuten.co.jp/calendar/101904/monthly/";
+							var address = new Url(baseurl);
+
+							// クエリパラメータを設定
+							address.SearchParams.Set("tid", date.ToString("yyyy-MM-01"));   // 指定月の1日を指定する
+							address.SearchParams.Set("s", "14");                            // 発売日順
+							address.SearchParams.Set("p", pageIndex.ToString());            // ページ番号
+							address.Fragment = "rclist";                                    // 表示形式(リスト表示)
+
+							Debug.WriteLine($"URL: {address}");
+
+							var swStep = Stopwatch.StartNew();
+							var localContext = BrowsingContext.New(config); // context を共有しない
+
+							// 楽天Koboのページを開く
+							using (var document = await localContext.OpenAsync(address))
+							{
+								swStep.Stop();
+								Debug.WriteLine($"[{pageIndex}] OpenAsync: {swStep.ElapsedMilliseconds} ms");
+
+								// ページから本のリストを取得
+								var booksElement = document.QuerySelector(".rb-items-list--list");
+
+								// Nullなら取得出来てないのでストップフラグを立てる
+								if (booksElement == null || booksElement.GetElementsByClassName("item").Length == 0)
+								{
+									Debug.WriteLine($"[{pageIndex}] Empty page detected. Stopping.");
+									lock (pageLock)
+									{
+										stopFlag = true;
+									}
+									semaphore.Release();
+									break;
+								}
+
+								// 取得した本リストを、ぶん回す
+								foreach (var book in booksElement.GetElementsByClassName("item"))
+								{
+									// 表示させるための本の情報作る
+									var bookRecord = new BookRecord();
+
+									// パース
+									var releaseDate = book.GetElementsByClassName("item-release__date");
+									var title = book.GetElementsByClassName("item-title");
+									var author = book.GetElementsByClassName("item-author__name");
+									var price = book.GetElementsByClassName("item-pricing__price");
+									var img = book.GetElementsByTagName("img");
+									var imgLink = (img.Length > 0) ? ((IHtmlImageElement)img[0]).Source?.Trim() : "";
+
+									// リリース日
+									bookRecord.releaseDate = (releaseDate.Length > 0) ? releaseDate[0].TextContent.Trim() : "";
+
+									// タイトル
+									if (title.Length > 0)
+									{
+										bookRecord.title = title[0].GetElementsByClassName("item-title__text")[0]?.TextContent.Trim();
+										bookRecord.link = title[0].GetElementsByTagName("a")[0]?.GetAttribute("href")?.Trim();
+									}
+
+									// 作者
+									bookRecord.author = (author.Length > 0) ? author[0].TextContent.Trim() : "";
+									// 価格
+									bookRecord.price = (price.Length > 0) ? price[0].TextContent.Trim() : "";
+									// 画像リンク
+									bookRecord.imageLink = imgLink;
+
+									Interlocked.Increment(ref _countBookLoaded);
+
+									// むかつく分冊版の場合は排除するためスキップ
+									if (IsOneshotEpisode(bookRecord))
+									{
+										Interlocked.Increment(ref _countBookSkipped);
+										continue;
+									}
+
+									// 本の情報を追加
+									lock (tempBooks)
+									{
+										tempBooks.Add(bookRecord);
+									}
+								}
+							}
+						}
+						catch (Exception ex)
+						{
+							Debug.WriteLine($"[{pageIndex}] Error: {ex.Message}");
+						}
+						finally
+						{
+							semaphore.Release();
+						}
 					}
-				}
-				catch (Exception e)
-				{
-					Debug.WriteLine(e.Message);
-					break;
-				}
+				}));			
+			}
+
+			await Task.WhenAll(tasks);
+
+			// 取得した本の情報を画面用リストへ追加
+			lock (books)
+			{
+				foreach (var b in tempBooks)
+					books.Add(b);
 			}
 
 			// 画像のロード処理
@@ -211,6 +266,7 @@ namespace rakuten_scraper
 			// 全ての情報を取得し終えたらデータを次回起動時の為に保存しておく
 			SaveJson(date);
 		}
+
 
 		/// <summary>
 		/// 既にJSONデータが存在する場合はロードする
@@ -307,7 +363,6 @@ namespace rakuten_scraper
 
 		#region Private Method
 
-
 		/// <summary>
 		/// むかつく分冊版に含まれるキーワードがタイトルに含まれているかチェック
 		/// </summary>
@@ -315,32 +370,40 @@ namespace rakuten_scraper
 		/// <returns></returns>
 		private bool IsOneshotEpisode(BookRecord book)
 		{
-			if (book == null)
+			if (book == null || string.IsNullOrEmpty(book.title))
 				return false;
 
-			if (string.IsNullOrEmpty(book.title))
-				return false;
+			int score = 0;
 
 			// LinQとか書けないのでとりあえず回す
-			foreach (string regex in OneshotRegex)
+			foreach (string pattern in OneshotRegex)
 			{
-				if (Regex.IsMatch(book.title, regex))
+				if (Regex.IsMatch(book.title, pattern))
+					score += 2;
+			}
+
+			if (!string.IsNullOrEmpty(book.price))
+			{
+				// 値段が指定価格以下なら分冊版とみなす強硬手段
+				if (int.TryParse(book.price.Replace("円", ""), out int parsedPrice))
 				{
-					return true;
+					// 500円以下なら1ポイント加算
+					if (parsedPrice <= 500)
+						score += 1;
+					// 300円以下なら2ポイント加算
+					if (parsedPrice <= 300)
+						score += 2;
+					// 100円以下なら3ポイント加算
+					if (parsedPrice <= 100)
+						score += 3;
 				}
 			}
+			// 合本や完全版など、分冊ではないキーワードが含まれていれば減点
+			if (book.title.Contains("合本") || book.title.Contains("完全版"))
+				score -= 4;
 
-			if (string.IsNullOrEmpty(book.price))
-				return false;
 
-			// 値段が300円以下なら分冊版とみなす強硬手段
-			var price = int.Parse(book.price.Replace("円", ""), System.Globalization.NumberStyles.AllowThousands);
-			if (price <= 300)
-			{
-				return true;
-			}
-
-			return false;
+			return score >= ONSHOT_SCORE;
 		}
 
 		/// <summary>
@@ -348,69 +411,103 @@ namespace rakuten_scraper
 		/// </summary>
 		private async Task ImageLoaderAsync()
 		{
-			int i = 0;
-			//try
-			{
-				// ループ中にスレッドキャンセルが発生した場合に
-				// 母体が消えるのでエラーが発生する為一時退避したものを利用する
-				BindingList<BookRecord> tempBooks = this.books;
+			IsImageLoading = true;
 
-				// 既に取得済みの本一覧分回す
-				foreach (BookRecord book in tempBooks)
+			var swGlobal = Stopwatch.StartNew();
+			var semaphore = new SemaphoreSlim(MAX_THREAD_COUNT); // 最大並列数（調整可能）
+			var tempBooks = this.books.ToList(); // スレッドセーフなコピー
+			var tasks = new List<Task>();
+
+			int index = 0;
+			for (int i = 0; i < tempBooks.Count; i++)
+			{
+				var book = tempBooks[i];
+
+				// 画像ダウンロード処理をスレッド化
+				tasks.Add(Task.Run(async () =>
 				{
-					DocumentRequest dcRequester = new DocumentRequest(new Url(book.imageLink));
+					await semaphore.WaitAsync();
+					var swStep = Stopwatch.StartNew();
+
+					try
 					{
-						dcRequester.Headers["User-Agent"] = this.UserAgent;
-						dcRequester.Headers["DNT"] = "1"; // Do Not Track
-						dcRequester.Headers["Sec-Ch-Ua"] = "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"";
-						dcRequester.Headers["Sec-Ch-Ua-Mobile"] = "?0";
-						dcRequester.Headers["Sec-Ch-Ua-Platform"] = "Windows";
-						dcRequester.Headers["Sec-Fetch-Dest"] = "image";
-						dcRequester.Headers["Sec-Fetch-Mode"] = "no-cors";
-						dcRequester.Headers["Sec-Fetch-Site"] = "cross-site";
-						dcRequester.Headers["Sec-Fetch-Storage-Access"] = "active";
-						dcRequester.Headers["Accept"] = "image/jpeg,image/*,*/*;q=0.8";
-						dcRequester.Headers["Accept-Encoding"] = "gzip, deflate, br, zstd";
-						dcRequester.Headers["Accept-Language"] = "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7";
-						dcRequester.Headers["Cache-Control"] = "no-cache";
-						dcRequester.Headers["Pragma"] = "no-cache";
-						dcRequester.Headers["Priority"] = "i";
-						dcRequester.Headers["Referer"] = "https://books.rakuten.co.jp/";
+						// キャンセルされてたら即終了
+						cts.Token.ThrowIfCancellationRequested();
+
+						// リクエストヘッダの生成
+						var dcRequester = CreateBrowserLikeRequesterForImage(this.UserAgent, book.imageLink, book.imageEtag, book.imageLastModified);
+
+						// DEBUG: ログ出力
+						Debug.WriteLine($"[{index}] ----------------------------------------------");
+						Debug.WriteLine($"[{index}] Initialize: {swStep.ElapsedMilliseconds} ms");
+						swStep.Restart();
 
 						if (loader == null)
-							break;
+							return;
 
-						// 画像URLへアクセス
-						var downlaod = loader.FetchAsync(dcRequester);
-
-						using (var response = await downlaod.Task)
+						// 画像のダウンロード
+						var download = loader.FetchAsync(dcRequester);
+						using (var response = await download.Task)
 						{
+							// DEBUG: ログ出力
+							swStep.Stop();
+							Debug.WriteLine($"[{index}] FetchAsync: {swStep.ElapsedMilliseconds} ms");
+							Debug.WriteLine($"[{index}] StatusCode: {response.StatusCode}");
+							switch (response?.StatusCode)
+							{
+								case HttpStatusCode.OK:
+									Debug.WriteLine($"[{index}] Image Loaded");
+									break;
+								case HttpStatusCode.NotModified:
+									Debug.WriteLine($"[{index}] Image Load Skipped (ETag matched)");
+									Interlocked.Increment(ref index);
+									setProgress(index);
+									CountImageLoaded = index;
+									break;
+								default:
+									Debug.WriteLine($"[{index}] Image Load Failed: {response?.StatusCode}");
+									Interlocked.Increment(ref index);
+									setProgress(index);
+									CountImageLoaded = index;
+									return;
+							}
+							swStep.Restart();
+
 							if (response?.Content != null)
 							{
-								using (MemoryStream ms = new MemoryStream())
+								using (var ms = new MemoryStream())
 								{
-									// Byte情報を取得してImage化する
 									await response.Content.CopyToAsync(ms);
 									ms.Position = 0;
-									book.image ??= Common.MemoryToImage(ms);
+									string base64 = "";
+									book.image ??= Common.MemoryToImage(ms, 0.5f, out base64);
+									book.imgSrc = base64;
+									book.imageEtag = response.Headers?["Etag"];
+									book.imageLastModified = response.Headers?["Last-Modified"];
 								}
 							}
+							swStep.Stop();
+							Debug.WriteLine($"[{index}] Convert Image: {swStep.ElapsedMilliseconds} ms");
 						}
-					}
-					// 途中でThreadキャンセルが発生した場合はここで止める
-					cts.Token.ThrowIfCancellationRequested();
 
-					// プログレスバー用のカウンタを設定
-					setProgress(i);
-					CountImageLoaded = i;
-					i++;
-					await Task.Delay(1);
-				}
+						Interlocked.Increment(ref index);
+						setProgress(index);
+						CountImageLoaded = index;
+					}
+					catch (Exception ex)
+					{
+						Debug.WriteLine($"[{index}] Exception: {ex.Message}");
+					}
+					finally
+					{
+						semaphore.Release();
+					}
+				}));
 			}
-			//catch (Exception ex)
-			//{
-			//}
+
+			await Task.WhenAll(tasks);
 			IsImageLoading = false;
+			Debug.WriteLine($"All images loaded in {swGlobal.ElapsedMilliseconds} ms");
 		}
 
 		/// <summary>
@@ -478,7 +575,7 @@ namespace rakuten_scraper
 				cts.Cancel();
 		}
 
-		private static DefaultHttpRequester CreateBrowserLikeRequester(string userAgent, bool image = false)
+		private static DefaultHttpRequester CreateBrowserLikeRequester(string userAgent)
 		{
 			var requester = new DefaultHttpRequester();
 			requester.Headers["User-Agent"] = userAgent;
@@ -501,6 +598,29 @@ namespace rakuten_scraper
 			return requester;
 		}
 
+		private static DocumentRequest CreateBrowserLikeRequesterForImage(string userAgent, string? url, string? eTag, string? lastModified)
+		{
+			var dcRequester = new DocumentRequest(new Url(url));
+			dcRequester.Headers["User-Agent"] = userAgent;
+			dcRequester.Headers["DNT"] = "1";
+			dcRequester.Headers["Sec-Ch-Ua"] = "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"";
+			dcRequester.Headers["Sec-Ch-Ua-Mobile"] = "?0";
+			dcRequester.Headers["Sec-Ch-Ua-Platform"] = "Windows";
+			dcRequester.Headers["Sec-Fetch-Dest"] = "image";
+			dcRequester.Headers["Sec-Fetch-Mode"] = "no-cors";
+			dcRequester.Headers["Sec-Fetch-Site"] = "cross-site";
+			dcRequester.Headers["Sec-Fetch-Storage-Access"] = "active";
+			dcRequester.Headers["Accept"] = "image/jpeg,image/*,*/*;q=0.8";
+			dcRequester.Headers["Accept-Encoding"] = "gzip, deflate, br, zstd";
+			dcRequester.Headers["Accept-Language"] = "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7";
+			dcRequester.Headers["Referer"] = "https://books.rakuten.co.jp/";
+			dcRequester.Headers["Connection"] = "keep-alive";
+			dcRequester.Headers["If-None-Match"] = eTag ?? "";
+			if (!string.IsNullOrEmpty(lastModified))
+				dcRequester.Headers["If-Modified-Since"] = lastModified;
+
+			return dcRequester;
+		}
 		#endregion
 	}
 }

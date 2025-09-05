@@ -339,7 +339,6 @@ namespace rakuten_scraper
 			// 進捗によってステータスバー更新
 			if (scraper.IsImageLoading)
 			{
-				BookListGrid.Refresh();
 				ToolStripLabelStatusImage.Text = "画像読込中";
 			}
 			else
