@@ -53,7 +53,7 @@ namespace KoboScraper
 				if (img != null)
 					return img;
 				else
-					Debug.WriteLine($"Base64ToImage failed {base64String}");
+					Logger.Log(Logger.LogLevel.Debug, $"Base64ToImage failed {base64String}");
 				return null;
 				//					throw new Exception("Base64ToImage failed");
 			}
@@ -131,7 +131,7 @@ namespace KoboScraper
 			}
 			catch (Exception ex)
 			{
-				Debug.WriteLine("Error converting byte array to image: " + ex.Message);
+				Logger.Log(Logger.LogLevel.Debug, $"Error converting byte array to image: {ex.Message}");
 			}
 			return null;
 		}

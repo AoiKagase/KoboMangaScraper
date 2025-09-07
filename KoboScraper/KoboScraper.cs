@@ -5,11 +5,13 @@ using AngleSharp.Io;
 using KoboScraper;
 using KoboScraper.models;
 using StreamJsonRpc;
+using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace rakuten_scraper
 {
@@ -81,6 +83,10 @@ namespace rakuten_scraper
 		/// 分冊版排除のスコア閾値
 		/// </summary>
 		private const int ONSHOT_SCORE = 3;
+		/// <summary>
+		/// MAXリトライ回数
+		/// </summary>
+		private const int MAX_RETRY_COUNT = 4;
 		#endregion
 
 		#region Class Method
@@ -103,6 +109,19 @@ namespace rakuten_scraper
 
 			// 画像取得用にloaderを作成しとく
 			loader = context.GetService<IDocumentLoader>();
+		}
+
+		private Url SetUrlParameter(DateTime date, string baseurl, int pageIndex)
+		{
+			var address = new Url(baseurl);
+
+			// クエリパラメータを設定
+			address.SearchParams.Set("tid", date.ToString("yyyy-MM-01"));   // 指定月の1日を指定する
+			address.SearchParams.Set("s", "14");                            // 発売日順
+			address.SearchParams.Set("p", pageIndex.ToString());            // ページ番号
+			address.Fragment = "rclist";                                    // 表示形式(リスト表示)
+
+			return address;
 		}
 
 		/// <summary>
@@ -129,7 +148,10 @@ namespace rakuten_scraper
 			bool stopFlag = false;
 			object pageLock = new object();
 
-			for(int t = 0; t < MAX_THREAD_COUNT; t++)
+			var localContext = BrowsingContext.New(config); // context を共有しない
+			var document = null as IDocument;
+
+			for (int t = 0; t < MAX_THREAD_COUNT; t++)
 			{
 				tasks.Add(Task.Run(async () =>
 				{
@@ -153,24 +175,35 @@ namespace rakuten_scraper
 						{
 							// とりあえずこのURLなら今のところいける
 							string baseurl = $"https://books.rakuten.co.jp/calendar/101904/monthly/";
-							var address = new Url(baseurl);
+							var address = SetUrlParameter(date, baseurl, pageIndex);
 
-							// クエリパラメータを設定
-							address.SearchParams.Set("tid", date.ToString("yyyy-MM-01"));   // 指定月の1日を指定する
-							address.SearchParams.Set("s", "14");                            // 発売日順
-							address.SearchParams.Set("p", pageIndex.ToString());            // ページ番号
-							address.Fragment = "rclist";                                    // 表示形式(リスト表示)
-
-							Debug.WriteLine($"URL: {address}");
+							Logger.Log(Logger.LogLevel.Debug, $"Fetching page {pageIndex} for {date:yyyy-MM}");
+							Logger.Log(Logger.LogLevel.Info, $"URL: {address}");
 
 							var swStep = Stopwatch.StartNew();
-							var localContext = BrowsingContext.New(config); // context を共有しない
+
+							// ページを開く
+							// 失敗したらリトライする
+							for (int retry = 0; retry < MAX_THREAD_COUNT; retry++)
+							{
+								document = await localContext.OpenAsync(address);
+								if (document != null || document?.StatusCode == HttpStatusCode.OK)
+								{
+									break;
+								}
+								else
+								{
+									await Task.Delay(1000 * (retry + 1)); // Exponential backoff
+									Logger.Log(Logger.LogLevel.Warning, $"[{pageIndex}] Retry {retry + 1}/{MAX_RETRY_COUNT} for page load.");
+									continue;
+								}
+							}
 
 							// 楽天Koboのページを開く
-							using (var document = await localContext.OpenAsync(address))
+							using (document)
 							{
 								swStep.Stop();
-								Debug.WriteLine($"[{pageIndex}] OpenAsync: {swStep.ElapsedMilliseconds} ms");
+								Logger.Log(Logger.LogLevel.Debug, $"[{pageIndex}] OpenAsync: {swStep.ElapsedMilliseconds} ms");
 
 								// ページから本のリストを取得
 								var booksElement = document.QuerySelector(".rb-items-list--list");
@@ -178,12 +211,11 @@ namespace rakuten_scraper
 								// Nullなら取得出来てないのでストップフラグを立てる
 								if (booksElement == null || booksElement.GetElementsByClassName("item").Length == 0)
 								{
-									Debug.WriteLine($"[{pageIndex}] Empty page detected. Stopping.");
+									Logger.Log(Logger.LogLevel.Info, $"[{pageIndex}] Empty page detected. Stopping.");
 									lock (pageLock)
 									{
 										stopFlag = true;
 									}
-									semaphore.Release();
 									break;
 								}
 
@@ -237,14 +269,14 @@ namespace rakuten_scraper
 						}
 						catch (Exception ex)
 						{
-							Debug.WriteLine($"[{pageIndex}] Error: {ex.Message}");
+							Logger.Log(Logger.LogLevel.Error, $"[{pageIndex}] Error: {ex.Message}");
 						}
 						finally
 						{
 							semaphore.Release();
 						}
 					}
-				}));			
+				}));
 			}
 
 			await Task.WhenAll(tasks);
@@ -438,65 +470,77 @@ namespace rakuten_scraper
 						var dcRequester = CreateBrowserLikeRequesterForImage(this.UserAgent, book.imageLink, book.imageEtag, book.imageLastModified);
 
 						// DEBUG: ログ出力
-						Debug.WriteLine($"[{index}] ----------------------------------------------");
-						Debug.WriteLine($"[{index}] Initialize: {swStep.ElapsedMilliseconds} ms");
+						Logger.Log(Logger.LogLevel.Debug, $"[{index}] ----------------------------------------------");
+						Logger.Log(Logger.LogLevel.Debug, $"[{index}] Initialize: {swStep.ElapsedMilliseconds} ms");
 						swStep.Restart();
 
 						if (loader == null)
 							return;
 
-						// 画像のダウンロード
-						var download = loader.FetchAsync(dcRequester);
-						using (var response = await download.Task)
+						for (int retry = 0; retry < MAX_RETRY_COUNT; retry++)
 						{
-							// DEBUG: ログ出力
-							swStep.Stop();
-							Debug.WriteLine($"[{index}] FetchAsync: {swStep.ElapsedMilliseconds} ms");
-							Debug.WriteLine($"[{index}] StatusCode: {response.StatusCode}");
-							switch (response?.StatusCode)
+							// 画像のダウンロード
+							var download = loader.FetchAsync(dcRequester);
+							using (var response = await download.Task)
 							{
-								case HttpStatusCode.OK:
-									Debug.WriteLine($"[{index}] Image Loaded");
-									break;
-								case HttpStatusCode.NotModified:
-									Debug.WriteLine($"[{index}] Image Load Skipped (ETag matched)");
-									Interlocked.Increment(ref index);
-									setProgress(index);
-									CountImageLoaded = index;
-									break;
-								default:
-									Debug.WriteLine($"[{index}] Image Load Failed: {response?.StatusCode}");
-									Interlocked.Increment(ref index);
-									setProgress(index);
-									CountImageLoaded = index;
-									return;
-							}
-							swStep.Restart();
-
-							if (response?.Content != null)
-							{
-								using (var ms = new MemoryStream())
+								// DEBUG: ログ出力
+								swStep.Stop();
+								Logger.Log(Logger.LogLevel.Debug, $"[{index}] FetchAsync: {swStep.ElapsedMilliseconds} ms");
+								Logger.Log(Logger.LogLevel.Debug, $"[{index}] StatusCode: {response.StatusCode}");
+								switch (response?.StatusCode)
 								{
-									await response.Content.CopyToAsync(ms);
-									ms.Position = 0;
-									string base64 = "";
-									book.image ??= Common.MemoryToImage(ms, 0.5f, out base64);
-									book.imgSrc = base64;
-									book.imageEtag = response.Headers?["Etag"];
-									book.imageLastModified = response.Headers?["Last-Modified"];
+									case HttpStatusCode.OK:
+										swStep.Restart();
+
+										if (response?.Content != null)
+										{
+											using (var ms = new MemoryStream())
+											{
+												await response.Content.CopyToAsync(ms);
+												ms.Position = 0;
+												string base64 = "";
+												book.image ??= Common.MemoryToImage(ms, 0.5f, out base64);
+												book.imgSrc = base64;
+												book.imageEtag = response.Headers?["Etag"];
+												book.imageLastModified = response.Headers?["Last-Modified"];
+											}
+										}
+										swStep.Stop();
+										Logger.Log(Logger.LogLevel.Debug, $"[{index}] Convert Image: {swStep.ElapsedMilliseconds} ms");
+										Logger.Log(Logger.LogLevel.Info, $"[{index}] Image Loaded");
+										Interlocked.Increment(ref index);
+										setProgress(index);
+										CountImageLoaded = index;
+										return;
+									case HttpStatusCode.NotModified:
+										Logger.Log(Logger.LogLevel.Info, $"[{index}] Image Load Skipped (ETag matched)");
+										Interlocked.Increment(ref index);
+										setProgress(index);
+										CountImageLoaded = index;
+										return;
+									default:
+										Logger.Log(Logger.LogLevel.Error, $"[{index}] Image Load Failed: {response?.StatusCode}");
+										if (retry < MAX_RETRY_COUNT)
+										{
+											await Task.Delay(1000 * (retry + 1)); // Exponential backoff
+											Logger.Log(Logger.LogLevel.Error, $"[{index}] Max retries reached. Skipping image.");
+											continue;
+										}
+										else
+										{
+											// 失敗した場合はスキップ
+											Interlocked.Increment(ref index);
+											setProgress(index);
+											CountImageLoaded = index;
+										}
+										return;
 								}
 							}
-							swStep.Stop();
-							Debug.WriteLine($"[{index}] Convert Image: {swStep.ElapsedMilliseconds} ms");
 						}
-
-						Interlocked.Increment(ref index);
-						setProgress(index);
-						CountImageLoaded = index;
 					}
 					catch (Exception ex)
 					{
-						Debug.WriteLine($"[{index}] Exception: {ex.Message}");
+						Logger.Log(Logger.LogLevel.Error, $"[{index}] Exception: {ex.Message}");
 					}
 					finally
 					{
@@ -507,7 +551,7 @@ namespace rakuten_scraper
 
 			await Task.WhenAll(tasks);
 			IsImageLoading = false;
-			Debug.WriteLine($"All images loaded in {swGlobal.ElapsedMilliseconds} ms");
+			Logger.Log(Logger.LogLevel.Info, $"All images loaded in {swGlobal.ElapsedMilliseconds} ms");
 		}
 
 		/// <summary>

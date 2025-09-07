@@ -1,4 +1,5 @@
 using AngleSharp.Io;
+using KoboScraper;
 using KoboScraper.models;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -88,16 +89,22 @@ namespace rakuten_scraper
 			await LoadDataAsync(CurrentMonthPicker.Value);
 
 			BookListGrid.EnableHeadersVisualStyles = false;
-			BookListGrid.ColumnHeadersDefaultCellStyle.Font = new Font("メイリオ", 12, FontStyle.Bold);
+			BookListGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Noto Sans JP", 12, FontStyle.Bold);
 			BookListGrid.ColumnHeadersDefaultCellStyle.Padding = new Padding(0, 8, 0, 2);
 			BookListGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.Gray;
 			BookListGrid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Color.Gray;
 			BookListGrid.ColumnHeadersDefaultCellStyle.SelectionForeColor = Color.White;
 			BookListGrid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-			BookListGrid.DefaultCellStyle.Font = new Font("メイリオ", 12, FontStyle.Bold);
+			BookListGrid.DefaultCellStyle.Font = new Font("Noto Sans JP", 12, FontStyle.Bold);
 			BookListGrid.DefaultCellStyle.Padding = new Padding(0, 8, 0, 2);
-
+			BookListGrid.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
 			BookListGrid.AutoResizeColumns();
+
+			var consoleForm = new FormConsole();
+			consoleForm.Show(); // 非モーダルで表示（閉じてもアプリは終了しない）
+			consoleForm.StartPosition = FormStartPosition.Manual;
+			consoleForm.Location = new Point(100, 100);
+			consoleForm.Size = new Size(600, 400);
 
 
 			// ステータスバーの更新
@@ -121,7 +128,7 @@ namespace rakuten_scraper
 			catch (Exception ex)
 			{
 				ToolStripLabelStatusBook.Text = "読込失敗";
-				Debug.WriteLine($"getPage failed: {ex.Message}");
+				Logger.Log(Logger.LogLevel.Warning, $"getPage failed: {ex.Message}");
 			}
 		}
 
