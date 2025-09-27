@@ -35,7 +35,7 @@
 			// 
 			richTextBox1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 			richTextBox1.BackColor = Color.Black;
-			richTextBox1.Font = new Font("Noto Sans JP", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
+			richTextBox1.Font = new Font("Consolas", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
 			richTextBox1.ForeColor = Color.DarkGray;
 			richTextBox1.Location = new Point(12, 12);
 			richTextBox1.Name = "richTextBox1";

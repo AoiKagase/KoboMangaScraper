@@ -21,11 +21,11 @@ namespace KoboScraper
 		{
 			string prefix = level switch
 			{
-				LogLevel.Debug => "[DEBUG]",
-				LogLevel.Info => "[INFO ]",
-				LogLevel.Warning => "[WARN ]",
-				LogLevel.Error => "[ERROR]",
-				_ => "[UNKWN]"
+				LogLevel.Debug		=> "DEBUG",
+				LogLevel.Info		=> "INFO ",
+				LogLevel.Warning	=> "WARN ",
+				LogLevel.Error		=> "ERROR",
+				_ => "UNKWN"
 			};
 
 			string line = $"[{DateTime.Now:yyyy/MM/dd HH:mm:ss.fff}][{prefix}] {message}";

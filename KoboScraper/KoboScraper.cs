@@ -11,6 +11,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Windows.Shapes;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace rakuten_scraper
@@ -78,7 +79,7 @@ namespace rakuten_scraper
 		/// <summary>
 		/// スレッド最大数
 		/// </summary>
-		private const int MAX_THREAD_COUNT = 4;
+		private const int MAX_THREAD_COUNT = 5;
 		/// <summary>
 		/// 分冊版排除のスコア閾値
 		/// </summary>
@@ -177,14 +178,14 @@ namespace rakuten_scraper
 							string baseurl = $"https://books.rakuten.co.jp/calendar/101904/monthly/";
 							var address = SetUrlParameter(date, baseurl, pageIndex);
 
-							Logger.Log(Logger.LogLevel.Debug, $"Fetching page {pageIndex} for {date:yyyy-MM}");
-							Logger.Log(Logger.LogLevel.Info, $"URL: {address}");
+							Logger.Log(Logger.LogLevel.Debug, $"[{pageIndex}] Fetching page {pageIndex} for {date:yyyy-MM}");
+							Logger.Log(Logger.LogLevel.Info, $"[{pageIndex}] URL: {address}");
 
 							var swStep = Stopwatch.StartNew();
 
 							// ページを開く
 							// 失敗したらリトライする
-							for (int retry = 0; retry < MAX_THREAD_COUNT; retry++)
+							for (int retry = 0; retry < MAX_RETRY_COUNT; retry++)
 							{
 								document = await localContext.OpenAsync(address);
 								if (document != null || document?.StatusCode == HttpStatusCode.OK)
@@ -258,6 +259,7 @@ namespace rakuten_scraper
 										Interlocked.Increment(ref _countBookSkipped);
 										continue;
 									}
+									var seenBooks = new HashSet<string>();
 
 									// 本の情報を追加
 									lock (tempBooks)
@@ -269,7 +271,15 @@ namespace rakuten_scraper
 						}
 						catch (Exception ex)
 						{
-							Logger.Log(Logger.LogLevel.Error, $"[{pageIndex}] Error: {ex.Message}");
+							var trace = new StackTrace(ex, true); // true でファイル名・行番号を含める
+							var frame = trace.GetFrame(0);        // 最も内側のフレームを取得
+
+							string? file = frame?.GetFileName();
+							int? line = frame?.GetFileLineNumber() ?? -1;
+							string? method = frame?.GetMethod()?.Name;
+
+							Logger.Log(Logger.LogLevel.Error, $"[{pageIndex}] Exception in {method} at {file}:{line}");
+							Logger.Log(Logger.LogLevel.Error, $"[{pageIndex}] {ex.Message}");
 						}
 						finally
 						{
@@ -284,8 +294,16 @@ namespace rakuten_scraper
 			// 取得した本の情報を画面用リストへ追加
 			lock (books)
 			{
+				var seenBooks = new HashSet<string>();
 				foreach (var b in tempBooks)
-					books.Add(b);
+				{
+					string key = $"{b.title}|{b.link}";
+					if (!seenBooks.Contains(key))
+					{
+						seenBooks.Add(key);
+						books.Add(b);
+					}
+				}
 			}
 
 			// 画像のロード処理
