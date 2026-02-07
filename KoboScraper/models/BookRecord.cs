@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
+﻿using System.ComponentModel;
 using System.Text.Json.Serialization;
-using System.Threading.Tasks;
 using Image = System.Drawing.Image;
 
 namespace KoboScraper.models
@@ -62,6 +57,7 @@ namespace KoboScraper.models
 		public string? title { get; set; }
 		[DisplayName("作者")]
 		[ReadOnly(true)]
+		[Browsable(false)]
 		public string? author { get; set; }
 		[DisplayName("価格")]
 		[ReadOnly(true)]
@@ -85,6 +81,8 @@ namespace KoboScraper.models
 		public string? link { get; set; }
 		[Browsable(false)]
 		public string? imageLink { get; set; }
+		[Browsable(false)]
+		public string? imageFileName { get; set; }
 		[Browsable(false)]
 		public string? imageEtag { get; set; }
 		[Browsable(false)]

@@ -4,15 +4,10 @@ using AngleSharp.Html.Dom;
 using AngleSharp.Io;
 using KoboScraper;
 using KoboScraper.models;
-using StreamJsonRpc;
-using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Windows.Shapes;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace rakuten_scraper
 {
@@ -134,6 +129,9 @@ namespace rakuten_scraper
 			// 画像を取得する為の処理が既に走ってる場合はキャンセルさせる
 			if (IsImageLoading)
 				await cts.CancelAsync();
+
+			// 既存booksをコピー
+			var oldBooks = books.ToList();
 
 			// 取得する本のリストを初期化
 			books.Clear();
@@ -300,6 +298,15 @@ namespace rakuten_scraper
 					string key = $"{b.title}|{b.link}";
 					if (!seenBooks.Contains(key))
 					{
+						// 既存データがあればキャッシュ情報をコピー
+						var old = oldBooks.FirstOrDefault(x => x.title == b.title && x.link == b.link);
+						if (old != null)
+						{
+							b.imageFileName = old.imageFileName;
+							b.imageLastModified = old.imageLastModified;
+							b.imageEtag = old.imageEtag;
+						}
+
 						seenBooks.Add(key);
 						books.Add(b);
 					}
@@ -317,6 +324,29 @@ namespace rakuten_scraper
 			SaveJson(date);
 		}
 
+		/// <summary>
+		/// 画像キャッシュをロード
+		/// </summary>
+		private void LoadCachedImages()
+		{
+			foreach (var book in books)
+			{
+				if (!string.IsNullOrEmpty(book.imageFileName))
+				{
+					string filePath = System.IO.Path.Combine("cache", book.imageFileName);
+					if (File.Exists(filePath))
+					{
+						using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+						using (var ms = new MemoryStream())
+						{
+							fs.CopyTo(ms);
+							ms.Position = 0;
+							book.image = Common.MemoryToImage(ms, 0.5f, out _);
+						}
+					}
+				}
+			}
+		}
 
 		/// <summary>
 		/// 既にJSONデータが存在する場合はロードする
@@ -353,6 +383,10 @@ namespace rakuten_scraper
 					GetReservations(date);
 
 					CountBookLoaded = books.Count;
+
+					// 画像キャッシュをロード
+					LoadCachedImages(); 
+
 					// 読み込んだら正常終了
 					return true;
 				}
@@ -468,6 +502,9 @@ namespace rakuten_scraper
 			var tempBooks = this.books.ToList(); // スレッドセーフなコピー
 			var tasks = new List<Task>();
 
+			// cacheディレクトリ作成
+			Directory.CreateDirectory("cache");
+
 			int index = 0;
 			for (int i = 0; i < tempBooks.Count; i++)
 			{
@@ -483,6 +520,34 @@ namespace rakuten_scraper
 					{
 						// キャンセルされてたら即終了
 						cts.Token.ThrowIfCancellationRequested();
+						// ファイル名をURLから抽出
+						string? fileName = null;
+						if (!string.IsNullOrEmpty(book.imageLink))
+						{
+							try
+							{
+								fileName = System.IO.Path.GetFileName(new Uri(book.imageLink).LocalPath);
+							}
+							catch
+							{
+								fileName = Guid.NewGuid().ToString() + ".jpg";
+							}
+						}
+						else
+						{
+							fileName = Guid.NewGuid().ToString() + ".jpg";
+						}
+						string filePath = System.IO.Path.Combine("cache", fileName);
+
+						// 既にファイルが存在する場合はスキップ
+						if (File.Exists(filePath))
+						{
+							book.imageFileName = fileName;
+							Interlocked.Increment(ref index);
+							setProgress(index);
+							CountImageLoaded = index;
+							return;
+						}
 
 						// リクエストヘッダの生成
 						var dcRequester = CreateBrowserLikeRequesterForImage(this.UserAgent, book.imageLink, book.imageEtag, book.imageLastModified);
@@ -512,16 +577,14 @@ namespace rakuten_scraper
 
 										if (response?.Content != null)
 										{
-											using (var ms = new MemoryStream())
+											using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
 											{
-												await response.Content.CopyToAsync(ms);
-												ms.Position = 0;
-												string base64 = "";
-												book.image ??= Common.MemoryToImage(ms, 0.5f, out base64);
-												book.imgSrc = base64;
-												book.imageEtag = response.Headers?["Etag"];
-												book.imageLastModified = response.Headers?["Last-Modified"];
+												await response.Content.CopyToAsync(fs);
 											}
+
+											book.imageFileName = fileName;
+											book.imageEtag = response.Headers?["Etag"];
+											book.imageLastModified = response.Headers?["Last-Modified"];
 										}
 										swStep.Stop();
 										Logger.Log(Logger.LogLevel.Debug, $"[{index}] Convert Image: {swStep.ElapsedMilliseconds} ms");
@@ -532,6 +595,7 @@ namespace rakuten_scraper
 										return;
 									case HttpStatusCode.NotModified:
 										Logger.Log(Logger.LogLevel.Info, $"[{index}] Image Load Skipped (ETag matched)");
+										book.imageFileName = fileName;
 										Interlocked.Increment(ref index);
 										setProgress(index);
 										CountImageLoaded = index;
@@ -621,6 +685,7 @@ namespace rakuten_scraper
 				}
 				finally
 				{
+					LoadCachedImages();
 					IsImageLoading = false;
 				}
 			}, cts.Token);
