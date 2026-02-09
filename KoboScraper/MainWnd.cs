@@ -3,6 +3,7 @@ using KoboScraper.models;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace rakuten_scraper
 {
@@ -44,6 +45,9 @@ namespace rakuten_scraper
 		private Font _fontBold12 = new Font("Noto Sans JP", 12, FontStyle.Bold);
 		// グローバル変数にBindingSourceを追加
 		private BindingSource? _bindingSource;
+		private HashSet<string> _previousCheckedTitles = new HashSet<string>();
+		private const double TITLE_MATCH_THRESHOLD = 0.75;  // 75%以上一致で判定
+
 		/// -----------------------------------------------------------
 		/// <summary>
 		/// Form上で利用するグローバル変数
@@ -94,8 +98,10 @@ namespace rakuten_scraper
 
 			// 当月データをロード
 			await LoadDataAsync(CurrentMonthPicker.Value);
+			// 過去チェック済みタイトルを事前ロード
+			_previousCheckedTitles = await Task.Run(() => LoadPreviousCheckedTitles());
 
-            BookListGrid.EnableHeadersVisualStyles = false;
+			BookListGrid.EnableHeadersVisualStyles = false;
             BookListGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Noto Sans JP", 11, FontStyle.Bold);
             BookListGrid.ColumnHeadersDefaultCellStyle.Padding = new Padding(0, 6, 0, 6);
             BookListGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(64, 64, 64);
@@ -156,12 +162,22 @@ namespace rakuten_scraper
 
 				if (book.isChecked)
 				{
-					e.PaintParts &= ~DataGridViewPaintParts.Background;
 					using (Brush backBrush = new SolidBrush(Color.FromArgb(200, 230, 200)))
 					{
 						e.Graphics?.FillRectangle(backBrush, e.RowBounds);
 					}
-					e.PaintParts |= DataGridViewPaintParts.Background;
+					e.PaintParts &= ~DataGridViewPaintParts.Background;
+//					e.PaintParts |= DataGridViewPaintParts.Background;
+				}
+				else if (IsPreviouslyChecked(book.title))
+				{
+					// 過去チェック済みで今月未チェックは薄黄色（ハイライト）
+					using (Brush backBrush = new SolidBrush(Color.FromArgb(255, 255, 200)))  // 薄黄色
+					{
+						e.Graphics?.FillRectangle(backBrush, e.RowBounds);
+					}
+					e.PaintParts &= ~DataGridViewPaintParts.Background;
+//					e.PaintParts |= DataGridViewPaintParts.Background;
 				}
 			}
 		}
@@ -557,7 +573,7 @@ namespace rakuten_scraper
                 if (!scraper.IsImageLoading)
                 {
                     // 画像再読込
-                    scraper.StartLoadImageThread();
+                    scraper.StartLoadImageThread(CurrentMonthPicker.Value);
                 }
                 else
                 {
@@ -612,5 +628,97 @@ namespace rakuten_scraper
 
 			BookListGrid.Refresh();
 		}
-    }
+
+		/// <summary>
+		/// 2つのタイトルの類似度を計算（前方一致ベース）
+		/// </summary>
+		private double CalculateTitleSimilarity(string title1, string title2)
+		{
+			if (string.IsNullOrEmpty(title1) || string.IsNullOrEmpty(title2))
+				return 0;
+
+			// 短い方の長さを基準に、先頭からマッチする割合を計算
+			int minLength = Math.Min(title1.Length, title2.Length);
+			int maxLength = Math.Max(title1.Length, title2.Length);
+
+			int matchCount = 0;
+			for (int i = 0; i < minLength; i++)
+			{
+				if (title1[i] == title2[i])
+					matchCount++;
+				else
+					break;  // 前方一致が途切れたら終了
+			}
+
+			// マッチした長さ / 長い方の長さ = 類似度
+			return (double)matchCount / maxLength;
+		}
+		/// <summary>
+		/// 過去にチェック済みかどうかを判定（類似度ベース）
+		/// </summary>
+		private bool IsPreviouslyChecked(string? title)
+		{
+			if (string.IsNullOrEmpty(title))
+				return false;
+
+			string normalizedTitle = Common.NormalizeTitle(title);
+
+			// 完全一致チェック
+			if (_previousCheckedTitles.Contains(normalizedTitle))
+				return true;
+
+			// 類似度チェック
+			foreach (var previousTitle in _previousCheckedTitles)
+			{
+				double similarity = CalculateTitleSimilarity(normalizedTitle, previousTitle);
+				if (similarity >= TITLE_MATCH_THRESHOLD)
+					return true;
+			}
+
+			return false;
+		}
+
+		/// <summary>
+		/// 過去のチェック済みタイトルを読み込む
+		/// </summary>
+		private HashSet<string> LoadPreviousCheckedTitles()
+		{
+			var checkedTitles = new HashSet<string>();
+
+			string dataDir = "data";
+
+			// dataディレクトリが存在しない場合は返す
+			if (!Directory.Exists(dataDir))
+				return checkedTitles;
+
+			try
+			{
+				// 全ての_reservations.jsonファイルを取得
+				var files = Directory.GetFiles(dataDir, "*_reservations.json");
+
+				foreach (var file in files)
+				{
+					try
+					{
+						string json = File.ReadAllText(file);
+						var reservations = JsonSerializer.Deserialize<SortableBindingList<BookReservation>>(json);
+
+						if (reservations != null)
+						{
+							foreach (var reservation in reservations)
+							{
+								string normalized = Common.NormalizeTitle(reservation.title);
+								if (!string.IsNullOrEmpty(normalized))
+									checkedTitles.Add(normalized);
+							}
+						}
+					}
+					catch { }
+				}
+			}
+			catch { }
+
+			return checkedTitles;
+		}
+	}
 }

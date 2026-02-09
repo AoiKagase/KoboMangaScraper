@@ -50,7 +50,7 @@ namespace rakuten_scraper
 		/// </summary>
 		private volatile Task? imgLoader;
 		private CancellationTokenSource cts = new CancellationTokenSource();
-		private string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0";
+		private string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0\r\n";
 		/// <summary>
 		/// むかつく分冊版に含まれるキーワード
 		/// これをすり抜けてくるやつ（通常のタイトルと見分けがつかない）
@@ -127,8 +127,13 @@ namespace rakuten_scraper
 		public async Task getPageAsync(DateTime date)
 		{
 			// 画像を取得する為の処理が既に走ってる場合はキャンセルさせる
-			if (IsImageLoading)
+			if (IsImageLoading && cts != null && !cts.Token.IsCancellationRequested)
+			{
 				await cts.CancelAsync();
+				cts.Dispose(); // 古いトークンを破棄
+			}
+			// 新しいCancellationTokenSourceを作成
+			cts = new CancellationTokenSource();
 
 			// 既存booksをコピー
 			var oldBooks = books.ToList();
@@ -315,7 +320,7 @@ namespace rakuten_scraper
 
 			// 画像のロード処理
 			// 非同期で行う
-			StartLoadImageThread();
+			StartLoadImageThread(date);
 
 			// 予約情報の取得
 			GetReservations(date);
@@ -327,13 +332,14 @@ namespace rakuten_scraper
 		/// <summary>
 		/// 画像キャッシュをロード
 		/// </summary>
-		private void LoadCachedImages()
+		private void LoadCachedImages(DateTime date)
 		{
+			string dateCache = date.ToString("yyyy-MM");
 			foreach (var book in books)
 			{
 				if (!string.IsNullOrEmpty(book.imageFileName))
 				{
-					string filePath = System.IO.Path.Combine("cache", book.imageFileName);
+					string filePath = System.IO.Path.Combine("cache", dateCache, book.imageFileName);
 					if (File.Exists(filePath))
 					{
 						using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read))
@@ -385,7 +391,7 @@ namespace rakuten_scraper
 					CountBookLoaded = books.Count;
 
 					// 画像キャッシュをロード
-					LoadCachedImages(); 
+					LoadCachedImages(date); 
 
 					// 読み込んだら正常終了
 					return true;
@@ -493,7 +499,7 @@ namespace rakuten_scraper
 		/// <summary>
 		/// 画像ロード処理
 		/// </summary>
-		private async Task ImageLoaderAsync()
+		private async Task ImageLoaderAsync(DateTime date)
 		{
 			IsImageLoading = true;
 
@@ -501,9 +507,9 @@ namespace rakuten_scraper
 			var semaphore = new SemaphoreSlim(MAX_THREAD_COUNT); // 最大並列数（調整可能）
 			var tempBooks = this.books.ToList(); // スレッドセーフなコピー
 			var tasks = new List<Task>();
-
+			string dateCache = date.ToString("yyyy-MM");
 			// cacheディレクトリ作成
-			Directory.CreateDirectory("cache");
+			Directory.CreateDirectory("cache\\" + dateCache);
 
 			int index = 0;
 			for (int i = 0; i < tempBooks.Count; i++)
@@ -537,16 +543,14 @@ namespace rakuten_scraper
 						{
 							fileName = Guid.NewGuid().ToString() + ".jpg";
 						}
-						string filePath = System.IO.Path.Combine("cache", fileName);
+						string filePath = System.IO.Path.Combine("cache", dateCache, fileName);
 
-						// 既にファイルが存在する場合はスキップ
-						if (File.Exists(filePath))
+						// キャッシュファイルが存在しない場合はETagとLastModifiedをクリアして再度取得させる
+						if (!File.Exists(filePath))
 						{
+							book.imageEtag = "";
+							book.imageLastModified = "";
 							book.imageFileName = fileName;
-							Interlocked.Increment(ref index);
-							setProgress(index);
-							CountImageLoaded = index;
-							return;
 						}
 
 						// リクエストヘッダの生成
@@ -555,6 +559,9 @@ namespace rakuten_scraper
 						// DEBUG: ログ出力
 						Logger.Log(Logger.LogLevel.Debug, $"[{index}] ----------------------------------------------");
 						Logger.Log(Logger.LogLevel.Debug, $"[{index}] Initialize: {swStep.ElapsedMilliseconds} ms");
+						Logger.Log(Logger.LogLevel.Debug, $"[{index}] Link: {book.imageLink}");
+						Logger.Log(Logger.LogLevel.Debug, $"[{index}] Etag: {book.imageEtag}");
+						Logger.Log(Logger.LogLevel.Debug, $"[{index}] LastModified: {book.imageLastModified}");
 						swStep.Restart();
 
 						if (loader == null)
@@ -569,7 +576,7 @@ namespace rakuten_scraper
 								// DEBUG: ログ出力
 								swStep.Stop();
 								Logger.Log(Logger.LogLevel.Debug, $"[{index}] FetchAsync: {swStep.ElapsedMilliseconds} ms");
-								Logger.Log(Logger.LogLevel.Debug, $"[{index}] StatusCode: {response.StatusCode}");
+								Logger.Log(Logger.LogLevel.Debug, $"[{index}] StatusCode: {response?.StatusCode}");
 								switch (response?.StatusCode)
 								{
 									case HttpStatusCode.OK:
@@ -673,19 +680,23 @@ namespace rakuten_scraper
 		/// <summary>
 		/// 非同期の画像データ読み込み処理
 		/// </summary>
-		public void StartLoadImageThread()
+		public void StartLoadImageThread(DateTime date)
 		{
 			IsImageLoading = true;
+
+			// cts が null でないか確認
+			if (cts == null)
+				cts = new CancellationTokenSource();
 
 			// 画像ロードは非同期で行う
 			imgLoader = Task.Run(async () => {
 				try
 				{
-					await ImageLoaderAsync();
+					await ImageLoaderAsync(date);
 				}
 				finally
 				{
-					LoadCachedImages();
+					LoadCachedImages(date);
 					IsImageLoading = false;
 				}
 			}, cts.Token);
@@ -698,8 +709,10 @@ namespace rakuten_scraper
 		public void CancelLoadImageThread()
 		{
 			// 画像を取得する為の処理が既に走ってる場合はキャンセルさせる
-			if (imgLoader != null && imgLoader.Status == TaskStatus.Running)
+			if (imgLoader != null && imgLoader.Status == TaskStatus.Running && cts != null)
+			{
 				cts.Cancel();
+			}
 		}
 
 		private static DefaultHttpRequester CreateBrowserLikeRequester(string userAgent)
@@ -730,24 +743,25 @@ namespace rakuten_scraper
 			var dcRequester = new DocumentRequest(new Url(url));
 			dcRequester.Headers["User-Agent"] = userAgent;
 			dcRequester.Headers["DNT"] = "1";
-			dcRequester.Headers["Sec-Ch-Ua"] = "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"";
+			dcRequester.Headers["Sec-Ch-Ua"] = "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Microsoft Edge\";v=\"144\"";
 			dcRequester.Headers["Sec-Ch-Ua-Mobile"] = "?0";
 			dcRequester.Headers["Sec-Ch-Ua-Platform"] = "Windows";
 			dcRequester.Headers["Sec-Fetch-Dest"] = "image";
 			dcRequester.Headers["Sec-Fetch-Mode"] = "no-cors";
 			dcRequester.Headers["Sec-Fetch-Site"] = "cross-site";
 			dcRequester.Headers["Sec-Fetch-Storage-Access"] = "active";
-			dcRequester.Headers["Accept"] = "image/jpeg,image/*,*/*;q=0.8";
+			dcRequester.Headers["Accept"] = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
 			dcRequester.Headers["Accept-Encoding"] = "gzip, deflate, br, zstd";
 			dcRequester.Headers["Accept-Language"] = "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7";
 			dcRequester.Headers["Referer"] = "https://books.rakuten.co.jp/";
 			dcRequester.Headers["Connection"] = "keep-alive";
 			dcRequester.Headers["If-None-Match"] = eTag ?? "";
 			if (!string.IsNullOrEmpty(lastModified))
-				dcRequester.Headers["If-Modified-Since"] = lastModified;
+				dcRequester.Headers["If-Modified-Since"] = lastModified ?? "";
 
 			return dcRequester;
 		}
+
 		#endregion
 	}
 }

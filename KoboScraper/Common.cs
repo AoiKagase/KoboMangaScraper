@@ -133,5 +133,17 @@ namespace KoboScraper
 			}
 			return null;
 		}
+
+		/// <summary>
+		/// タイトルを正規化（スペースと数字を除去）
+		/// </summary>
+		public static string NormalizeTitle(string title)
+		{
+			if (string.IsNullOrEmpty(title))
+				return "";
+
+			string normalized = System.Text.RegularExpressions.Regex.Replace(title, @"[\s\d]+", "");
+			return normalized;
+		}
 	}
 }
