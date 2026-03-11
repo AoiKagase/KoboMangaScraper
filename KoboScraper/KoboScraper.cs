@@ -124,7 +124,7 @@ namespace rakuten_scraper
 		/// 新刊のページを日付ベースで取得
 		/// </summary>
 		/// <param name="date">基準日</param>
-		public async Task getPageAsync(DateTime date)
+		public async Task getPageAsync(DateTime date, IProgress<ScrapeProgress>? progress = null)
 		{
 			// 画像を取得する為の処理が既に走ってる場合はキャンセルさせる
 			if (IsImageLoading && cts != null && !cts.Token.IsCancellationRequested)
@@ -152,13 +152,11 @@ namespace rakuten_scraper
 			bool stopFlag = false;
 			object pageLock = new object();
 
-			var localContext = BrowsingContext.New(config); // context を共有しない
-			var document = null as IDocument;
-
 			for (int t = 0; t < MAX_THREAD_COUNT; t++)
 			{
 				tasks.Add(Task.Run(async () =>
 				{
+					var threadContext = BrowsingContext.New(config); // context を共有しない
 					while (true)
 					{
 						await semaphore.WaitAsync();
@@ -185,13 +183,14 @@ namespace rakuten_scraper
 							Logger.Log(Logger.LogLevel.Info, $"[{pageIndex}] URL: {address}");
 
 							var swStep = Stopwatch.StartNew();
+							IDocument? document = null;
 
 							// ページを開く
 							// 失敗したらリトライする
 							for (int retry = 0; retry < MAX_RETRY_COUNT; retry++)
 							{
-								document = await localContext.OpenAsync(address);
-								if (document != null || document?.StatusCode == HttpStatusCode.OK)
+								document = await threadContext.OpenAsync(address);
+								if (document != null && document.StatusCode == HttpStatusCode.OK)
 								{
 									break;
 								}
@@ -262,7 +261,6 @@ namespace rakuten_scraper
 										Interlocked.Increment(ref _countBookSkipped);
 										continue;
 									}
-									var seenBooks = new HashSet<string>();
 
 									// 本の情報を追加
 									lock (tempBooks)
@@ -318,9 +316,17 @@ namespace rakuten_scraper
 				}
 			}
 
+			// 本の取得が終わったタイミングで通知
+			progress?.Report(new ScrapeProgress
+			{
+				StatusMessage = "本一覧取得完了",
+				CountBookLoaded = CountBookLoaded,
+				CountBookSkipped = CountBookSkipped,
+			});
+
 			// 画像のロード処理
 			// 非同期で行う
-			StartLoadImageThread(date);
+			StartLoadImageThread(date, progress);
 
 			// 予約情報の取得
 			GetReservations(date);
@@ -452,7 +458,7 @@ namespace rakuten_scraper
 		#endregion
 
 		#region Private Method
-
+		private static readonly Regex[] OneshotCompiledPatterns = OneshotRegex.Select(p => new Regex(p, RegexOptions.Compiled)).ToArray();
 		/// <summary>
 		/// むかつく分冊版に含まれるキーワードがタイトルに含まれているかチェック
 		/// </summary>
@@ -465,12 +471,13 @@ namespace rakuten_scraper
 
 			int score = 0;
 
-			// LinQとか書けないのでとりあえず回す
-			foreach (string pattern in OneshotRegex)
+			// タイトルにむかつく分冊版キーワードが含まれているかチェック
+			foreach (var regex in OneshotCompiledPatterns)
 			{
-				if (Regex.IsMatch(book.title, pattern))
+				if (regex.IsMatch(book.title))
 					score += 2;
 			}
+
 
 			if (!string.IsNullOrEmpty(book.price))
 			{
@@ -499,7 +506,7 @@ namespace rakuten_scraper
 		/// <summary>
 		/// 画像ロード処理
 		/// </summary>
-		private async Task ImageLoaderAsync(DateTime date)
+		private async Task ImageLoaderAsync(DateTime date, IProgress<ScrapeProgress>? progress = null)
 		{
 			IsImageLoading = true;
 
@@ -599,6 +606,14 @@ namespace rakuten_scraper
 										Interlocked.Increment(ref index);
 										setProgress(index);
 										CountImageLoaded = index;
+										progress?.Report(new ScrapeProgress
+										{
+											IsImageLoading = true,
+											ImageLoadProgress = ImageLoadProgress,
+											CountBookLoaded = CountBookLoaded,
+											CountBookSkipped = CountBookSkipped,
+											CountImageLoaded = index,
+										}); 
 										return;
 									case HttpStatusCode.NotModified:
 										Logger.Log(Logger.LogLevel.Info, $"[{index}] Image Load Skipped (ETag matched)");
@@ -606,6 +621,14 @@ namespace rakuten_scraper
 										Interlocked.Increment(ref index);
 										setProgress(index);
 										CountImageLoaded = index;
+										progress?.Report(new ScrapeProgress
+										{
+											IsImageLoading = true,
+											ImageLoadProgress = ImageLoadProgress,
+											CountBookLoaded = CountBookLoaded,
+											CountBookSkipped = CountBookSkipped,
+											CountImageLoaded = index,
+										}); 
 										return;
 									default:
 										Logger.Log(Logger.LogLevel.Error, $"[{index}] Image Load Failed: {response?.StatusCode}");
@@ -621,6 +644,14 @@ namespace rakuten_scraper
 											Interlocked.Increment(ref index);
 											setProgress(index);
 											CountImageLoaded = index;
+											progress?.Report(new ScrapeProgress
+											{
+												IsImageLoading = true,
+												ImageLoadProgress = ImageLoadProgress,
+												CountBookLoaded = CountBookLoaded,
+												CountBookSkipped = CountBookSkipped,
+												CountImageLoaded = index,
+											});
 										}
 										return;
 								}
@@ -680,7 +711,7 @@ namespace rakuten_scraper
 		/// <summary>
 		/// 非同期の画像データ読み込み処理
 		/// </summary>
-		public void StartLoadImageThread(DateTime date)
+		public void StartLoadImageThread(DateTime date, IProgress<ScrapeProgress>? progress = null)
 		{
 			IsImageLoading = true;
 
@@ -692,7 +723,7 @@ namespace rakuten_scraper
 			imgLoader = Task.Run(async () => {
 				try
 				{
-					await ImageLoaderAsync(date);
+					await ImageLoaderAsync(date, progress);
 				}
 				finally
 				{

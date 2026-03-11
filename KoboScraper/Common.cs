@@ -124,7 +124,15 @@ namespace KoboScraper
 						img = ResizeImage(img, resize);
 					img.SaveAsJpeg(outms);
 					base64 = img.ToBase64String(SixLabors.ImageSharp.Formats.Jpeg.JpegFormat.Instance);
-					return System.Drawing.Image.FromStream(outms);
+
+					// ① byte[] に一度書き出す（outmsはここで役目終了）
+					byte[] imageBytes = outms.ToArray();
+
+					// ② byte[] から新しい MemoryStream を作る
+					//    → この ms2 は Dispose しない（Imageが参照し続けるため）
+					var ms2 = new MemoryStream(imageBytes);
+					return System.Drawing.Image.FromStream(ms2);
+					//     ↑ ms2 は閉じられないので Image が安全に参照できる
 				}
 			}
 			catch (Exception ex)

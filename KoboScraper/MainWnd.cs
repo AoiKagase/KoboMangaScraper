@@ -184,13 +184,6 @@ namespace rakuten_scraper
         // 画像をサムネイル化して表示
         private void BookListGrid_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
-            if (e.ColumnIndex >= 0 && BookListGrid.Columns[e.ColumnIndex].Name == "image"
-                && e.Value is Image img)
-            {
-                // 元の画像の縦横比を保ったままサムネイル化（60x80程度）
-                e.Value = ResizeImage(img, 50, 75);
-            }
-
 			// タイトル列を複数行フォーマット
 			if (e.ColumnIndex >= 0 && BookListGrid.Columns[e.ColumnIndex].Name == "title"
 				&& e.Value is string title)
@@ -222,7 +215,21 @@ namespace rakuten_scraper
         {
             ToolStripLabelStatusBook.Text = "本一覧読込中";
 
-            try
+			// IProgress<T> はUIスレッドで作ると、Report()が自動的にUIスレッドで実行される
+			var progress = new Progress<ScrapeProgress>(report =>
+			{
+				// ここはUIスレッドで安全に動く
+				ToolStripProgressBar.Value = report.ImageLoadProgress;
+				toolStripStatusCount.Text = $"Skip: {report.CountBookSkipped} / Books: {report.CountBookLoaded}";
+				toolStripStatusImages.Text = $"Loaded: {report.CountImageLoaded} / ...";
+
+				if (report.IsImageLoading)
+					ToolStripLabelStatusImage.Text = "画像読込中";
+				else if (report.StatusMessage != null)
+					ToolStripLabelStatusImage.Text = report.StatusMessage;
+			});
+
+			try
             {
                 await scraper.getPageAsync(CurrentMonthPicker.Value);
                 ToolStripLabelStatusBook.Text = "本一覧読込完了";
@@ -457,8 +464,6 @@ namespace rakuten_scraper
             ToolStripProgressBar.Value = scraper.ImageLoadProgress;
             toolStripStatusCount.Text = $"Skip: {scraper.CountBookSkipped} / Books: {scraper.CountBookLoaded}";
             toolStripStatusImages.Text = $"Loaded: {scraper.CountImageLoaded} / Books: {scraper.CountBookLoaded - scraper.CountBookSkipped}";
-            // 念のため
-            Application.DoEvents();
         }
         #endregion
         #region Functions
